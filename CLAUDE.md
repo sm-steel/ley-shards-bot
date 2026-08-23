@@ -70,13 +70,13 @@ describe work as complete while they're still red.
 ## Task tracking (GitHub Issues)
 
 Implementation progress is tracked as **GitHub Issues** on this repo
-(`sm-steel/ley-shards-bot`, private), grouped into **Milestones** per phase
+(`sm-steel/ley-shards-bot`, public), grouped into **Milestones** per phase
 (e.g. "Phase 1: Core Economy & Pulls"). Use the `gh` CLI (`gh issue list`,
 `gh issue create`, `gh issue close`, `gh api repos/sm-steel/ley-shards-bot/milestones`)
 rather than inventing a separate tracking file — the issue tracker is the
 source of truth for what's done/in progress/planned.
 
-**Security rule — no exceptions, even though the repo is private:**
+**Security rule — no exceptions, the repo is public:**
 
 > **Never put real logins, hostnames, IPs, passwords, API keys/tokens, SSH
 > keys, or any other credential into an issue title, issue body, issue
@@ -86,9 +86,9 @@ source of truth for what's done/in progress/planned.
 > `PROXY_HOST`, `PROXY_PORT`, `<user>`, `<pass>`, or an alias like `moscow`/
 > `helsinki` with no FQDN) and point at "the ops vault" for real values —
 > never write them out, even "temporarily" or "just to explain the bug."
-> Treat every GitHub Issue/PR as if it could go public, because repo
-> visibility can change and issue history doesn't get quietly cleaned up
-> after the fact.
+> Everything in this repo — commits, issues, PRs, history — is public and
+> indexed by anyone/anything crawling GitHub; there is no private fallback
+> to catch a slip.
 
 ## Coding practices
 
