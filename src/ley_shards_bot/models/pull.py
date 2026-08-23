@@ -19,4 +19,4 @@ class Pull(Base):
     player_id: Mapped[int] = mapped_column(ForeignKey("players.telegram_user_id"))
     banner_id: Mapped[int] = mapped_column(ForeignKey("banners.id"))
     character_id: Mapped[int] = mapped_column(ForeignKey("characters.anilist_id"))
-    pulled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    pulled_at: Mapped[datetime] = mapped_column(DateTime)

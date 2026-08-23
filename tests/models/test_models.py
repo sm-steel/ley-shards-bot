@@ -42,6 +42,9 @@ def test_player_defaults_to_zero_balances(session):
     assert stored.ley_shards == 0
     assert stored.echoes == 0
     assert stored.last_daily_claimed_at is None
+    assert stored.last_trickle_date is None
+    assert stored.guess_awards_today == 0
+    assert stored.guess_awards_date is None
 
 
 def test_character_stores_roster_data(session):

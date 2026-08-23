@@ -18,8 +18,8 @@ class Banner(Base):
 
     # Event banners only. Standard banner is permanent (both null) and has
     # no rate-up character.
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
-    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     rate_up_character_id: Mapped[int | None] = mapped_column(
         ForeignKey("characters.anilist_id"), default=None
     )

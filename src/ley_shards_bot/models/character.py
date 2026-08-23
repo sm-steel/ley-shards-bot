@@ -5,13 +5,14 @@ makes re-running ingestion a natural upsert instead of needing separate
 dedup logic.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ley_shards_bot.models.base import Base
 from ley_shards_bot.models.enums import Rarity
+from ley_shards_bot.time_utils import utc_now
 
 
 class Character(Base):
@@ -31,6 +32,4 @@ class Character(Base):
     base_def: Mapped[int]
     base_spd: Mapped[int]
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
