@@ -21,20 +21,21 @@ Telegram  ◄── proxy ─────┼──┤   bot    │──┤ mari
 
 ## Infrastructure
 
-- **Host:** `moscow` — chosen for its RAM headroom (a
-  containerized MariaDB needs more than a small 1GB box comfortably offers).
+- **Host:** internal alias `moscow` (see the ops vault for the actual
+  hostname/credentials) — chosen for its RAM headroom, since a
+  containerized MariaDB needs more than a small 1GB box comfortably offers.
 - **Docker Compose stack**, two services:
   - `bot` — built from the repo `Dockerfile` (uv-based Python image).
   - `mariadb` — official `mariadb:11` image, data in a named volume. Not
     installed on the host — deliberately containerized like everything else
     deployed to these VPSes.
-- **Telegram connectivity:** moscow has no direct route to
+- **Telegram connectivity:** `moscow` has no direct route to
   `api.telegram.org`. The bot routes *all* Telegram API traffic — both
-  `getUpdates` long-polling and outgoing `send*` calls — through
-  `helsinki`'s tinyproxy (`http://<user>:<pass>@helsinki:8888`),
-  configured on `ApplicationBuilder`'s `proxy` and `get_updates_proxy`.
-  Credentials and both proxies are documented in the vault's
-  `инфраструктура/Прокси.md`.
+  `getUpdates` long-polling and outgoing `send*` calls — through another
+  internal host's (`helsinki`) tinyproxy
+  (`http://<user>:<pass>@<proxy-host>:<proxy-port>`), configured on
+  `ApplicationBuilder`'s `proxy` and `get_updates_proxy`. Real
+  hostname/port/credentials are documented in the ops vault, not here.
 - **Topics:** the group has Telegram topics enabled. A dedicated **"🎰
   Gacha"** topic hosts all game activity; gacha commands are scoped to it
   via `message_thread_id`, keeping it separate from generic chat and the
