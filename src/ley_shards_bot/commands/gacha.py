@@ -10,6 +10,7 @@ ARCHITECTURE.md's Commands & topics section. Expects
 
 from __future__ import annotations
 
+from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -68,7 +69,9 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user = update.effective_user
     if message is None or user is None:
         return
+    logger.debug("/pull from {}", user.id)
     if not _in_gacha_topic(update, context):
+        logger.debug("/pull from {} rejected: wrong topic", user.id)
         await message.reply_text("Use this in the 🎰 Gacha topic.")
         return
 
@@ -97,7 +100,9 @@ async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user = update.effective_user
     if message is None or user is None:
         return
+    logger.debug("/pull10 from {}", user.id)
     if not _in_gacha_topic(update, context):
+        logger.debug("/pull10 from {} rejected: wrong topic", user.id)
         await message.reply_text("Use this in the 🎰 Gacha topic.")
         return
 

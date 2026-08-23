@@ -15,9 +15,11 @@ in-memory session instead.
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from sqlalchemy import select
 
 from ley_shards_bot.models import (
@@ -141,6 +143,7 @@ def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> tup
 def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
     if not pool:
         msg = "No characters available for this rarity — has the roster been ingested?"
+        logger.error("Empty rarity pool: {}", msg)
         raise EmptyRarityPoolError(msg)
     return rng.choice(list(pool))
 
@@ -153,6 +156,7 @@ def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
 def get_or_create_standard_banner(session: Session) -> Banner:
     banner = session.scalar(select(Banner).where(Banner.type == BannerType.STANDARD))
     if banner is None:
+        logger.info("Creating the standard banner (first pull ever on this deployment)")
         banner = Banner(type=BannerType.STANDARD, name=STANDARD_BANNER_NAME)
         session.add(banner)
         session.flush()
@@ -192,6 +196,13 @@ def _execute_single_pull(
 ) -> PullOutcome:
     pity = _get_or_create_pity(session, player_id, banner.type)
 
+    logger.debug(
+        "Rolling for player={} banner={} pity(5star={}, 4star={})",
+        player_id,
+        banner.type,
+        pity.pulls_since_last_5star,
+        pity.pulls_since_last_4star,
+    )
     rarity = roll_rarity(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rng)
     pity.pulls_since_last_5star, pity.pulls_since_last_4star = next_pity_counts(
         pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity
@@ -206,6 +217,12 @@ def _execute_single_pull(
     character: Character | None = None
     if is_event_five_star:
         is_rate_up, pity.guaranteed_rate_up = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        logger.debug(
+            "Event 50/50 for player={}: is_rate_up={} guaranteed_next={}",
+            player_id,
+            is_rate_up,
+            pity.guaranteed_rate_up,
+        )
         if is_rate_up:
             character = session.get(Character, banner.rate_up_character_id)
 
@@ -244,11 +261,27 @@ def pull_single(
 
     player = get_or_create_player(session, player_id)
     if player.ley_shards < PULL_COST_LEY_SHARDS:
+        logger.warning(
+            "Pull rejected for {}: need {} Ley Shards, have {}",
+            player_id,
+            PULL_COST_LEY_SHARDS,
+            player.ley_shards,
+        )
         raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, player.ley_shards)
     player.ley_shards -= PULL_COST_LEY_SHARDS
 
     outcome = _execute_single_pull(session, player_id, banner, rng, now)
     session.commit()
+    logger.info(
+        "Pull: player={} banner={} -> {} {} (new={}, echoes={}, rate_up={})",
+        player_id,
+        banner.type,
+        outcome.rarity,
+        outcome.character.name,
+        outcome.is_new,
+        outcome.echoes_gained,
+        outcome.is_rate_up,
+    )
     return outcome
 
 
@@ -270,6 +303,12 @@ def pull_ten(
 
     player = get_or_create_player(session, player_id)
     if player.ley_shards < TEN_PULL_COST_LEY_SHARDS:
+        logger.warning(
+            "10-pull rejected for {}: need {} Ley Shards, have {}",
+            player_id,
+            TEN_PULL_COST_LEY_SHARDS,
+            player.ley_shards,
+        )
         raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, player.ley_shards)
     player.ley_shards -= TEN_PULL_COST_LEY_SHARDS
 
@@ -277,4 +316,11 @@ def pull_ten(
         _execute_single_pull(session, player_id, banner, rng, now) for _ in range(TEN_PULL_SIZE)
     ]
     session.commit()
+    rarity_counts = Counter(outcome.rarity for outcome in outcomes)
+    logger.info(
+        "10-pull: player={} banner={} -> {}",
+        player_id,
+        banner.type,
+        dict(rarity_counts),
+    )
     return outcomes

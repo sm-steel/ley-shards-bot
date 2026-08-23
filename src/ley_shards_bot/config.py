@@ -38,6 +38,7 @@ class Config:
     admin_user_ids: frozenset[int]
     telegram_proxy_url: str | None
     database_url: str
+    log_level: str
 
     @classmethod
     def from_env(cls) -> Config:
@@ -47,4 +48,5 @@ class Config:
             admin_user_ids=_parse_admin_ids(os.environ.get("ADMIN_USER_IDS", "")),
             telegram_proxy_url=os.environ.get("TELEGRAM_PROXY_URL") or None,
             database_url=database_url(),
+            log_level=os.environ.get("LOG_LEVEL", "INFO"),
         )

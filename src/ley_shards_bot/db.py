@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from loguru import logger
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -35,6 +36,7 @@ _session_factory: sessionmaker[Session] | None = None
 def _get_session_factory() -> sessionmaker[Session]:
     global _engine, _session_factory
     if _session_factory is None:
+        logger.debug("Creating DB engine (first session_scope() call)")
         _engine = create_engine(database_url())
         _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _session_factory
@@ -49,6 +51,7 @@ def session_scope() -> Iterator[Session]:
         yield session
         session.commit()
     except Exception:
+        logger.opt(exception=True).warning("Rolling back session due to an exception")
         session.rollback()
         raise
     finally:

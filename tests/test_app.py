@@ -17,6 +17,7 @@ def _fake_config() -> Config:
         admin_user_ids=frozenset({1}),
         telegram_proxy_url=None,
         database_url="sqlite:///:memory:",
+        log_level="DEBUG",
     )
 
 

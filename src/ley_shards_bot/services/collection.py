@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+from loguru import logger
 from sqlalchemy import select
 
 from ley_shards_bot.models import Character, PlayerCharacter, Rarity
@@ -41,6 +42,7 @@ def get_owned_characters(session: Session, player_id: int) -> list[OwnedCharacte
         for player_character, character in rows
     ]
     owned.sort(key=lambda o: (_RARITY_SORT_ORDER[o.character.rarity], o.character.name))
+    logger.debug("Collection lookup for {}: {} distinct characters", player_id, len(owned))
     return owned
 
 

@@ -11,5 +11,9 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
+# Unbuffered stdout/stderr — otherwise Python block-buffers output when it
+# isn't attached to a TTY (as under Docker), and `docker compose logs`
+# shows nothing until a large buffer fills or the process exits.
+ENV PYTHONUNBUFFERED=1
 
 CMD ["uv", "run", "--no-dev", "ley-shards-bot"]

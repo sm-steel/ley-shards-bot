@@ -14,12 +14,14 @@ else from the bot's config is needed to run this.
 from __future__ import annotations
 
 import argparse
+import os
 
 import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from ley_shards_bot.config import database_url
+from ley_shards_bot.logging_config import setup_logging
 from ley_shards_bot.services.roster import (
     DEFAULT_ROSTER_SIZE,
     assign_rarities,
@@ -30,6 +32,8 @@ from ley_shards_bot.services.roster import (
 
 
 def main() -> None:
+    setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--limit",
@@ -44,9 +48,7 @@ def main() -> None:
         candidates = fetch_top_characters(client, limit=args.limit)
         rated = assign_rarities(candidates)
         characters = build_characters(rated)
-        count = upsert_characters(session, characters)
-
-    print(f"Upserted {count} characters.")
+        upsert_characters(session, characters)
 
 
 if __name__ == "__main__":

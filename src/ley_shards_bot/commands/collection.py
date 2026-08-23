@@ -11,6 +11,7 @@ collection.
 
 from __future__ import annotations
 
+from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -81,6 +82,7 @@ async def collection_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     message = update.effective_message
     if user is None or message is None:
         return
+    logger.debug("/collection from {}", user.id)
 
     with session_scope() as session:
         owned = get_owned_characters(session, user.id)
@@ -104,6 +106,7 @@ async def collection_page_callback(update: Update, context: ContextTypes.DEFAULT
     owner_id, requested_page = parsed
 
     if clicking_user.id != owner_id:
+        logger.warning("{} tried to page through {}'s collection", clicking_user.id, owner_id)
         await query.answer("This isn't your collection.", show_alert=True)
         return
     await query.answer()

@@ -6,6 +6,7 @@ boundary those follow.
 
 from __future__ import annotations
 
+from loguru import logger
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -24,6 +25,7 @@ from ley_shards_bot.commands.economy import (
 )
 from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
 from ley_shards_bot.config import Config
+from ley_shards_bot.logging_config import setup_logging
 
 
 def build_application(config: Config) -> Application:
@@ -52,13 +54,20 @@ def build_application(config: Config) -> Application:
         MessageHandler(filters.ChatType.GROUPS, trickle_message_handler), group=1
     )
 
+    logger.info(
+        "Registered {} command(s), 1 callback handler, 1 trickle handler",
+        len(application.handlers[0]) - 1,
+    )
     return application
 
 
 def main() -> None:
     config = Config.from_env()
+    setup_logging(config.log_level)
+    logger.info("Starting ley-shards-bot (log level={})", config.log_level)
     application = build_application(config)
     application.run_polling()
+    logger.info("Bot stopped")
 
 
 if __name__ == "__main__":

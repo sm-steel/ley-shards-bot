@@ -51,6 +51,32 @@ uv run ty check          # type check
 Deployment is Docker-only (see `README.md`) — no bare-metal installs on the
 target VPS, including the database.
 
+## Logging
+
+Uses **loguru** (`from loguru import logger`) everywhere, not stdlib
+`logging` directly — set up once in `logging_config.py`, which also
+redirects python-telegram-bot's own stdlib logging into the same sink (the
+standard `InterceptHandler` recipe) so everything ends up in one place with
+one format. Sink level defaults to `INFO`, overridable via the `LOG_LEVEL`
+env var (`.env`) — `docker compose logs bot` should be readable by default,
+not a DEBUG firehose.
+
+**Log generously, but pick the right level:**
+
+| Level | Use for | Example in this codebase |
+|---|---|---|
+| `TRACE` | Fires on essentially every update | the trickle handler's per-message check |
+| `DEBUG` | Routine/internal detail, expected outcomes | pity counter values before a roll, a rejected `/daily` (too soon), command entry logs |
+| `INFO` | A meaningful game/economic event | a pull's outcome, a grant, a new player, roster ingestion summary |
+| `WARNING` | Recoverable anomaly, rejected action | insufficient balance, non-admin hitting an admin command, AniList rate-limit retry |
+| `ERROR` | Something is actually broken | empty rarity pool (roster gap), AniList retries exhausted |
+
+When adding a new log call, ask "would this be useful in production at
+`LOG_LEVEL=INFO`, or is it something I'd only want while debugging?" — the
+former is `INFO`+, the latter is `DEBUG`/`TRACE`. Don't log routine,
+frequent, expected-outcome events at `INFO` — that's what turns `INFO` logs
+into background noise nobody reads.
+
 ## Verifying changes
 
 **Before considering any Python change done, run all three — in this

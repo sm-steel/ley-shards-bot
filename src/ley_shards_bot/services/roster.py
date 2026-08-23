@@ -20,6 +20,7 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING
 
 import httpx
+from loguru import logger
 
 from ley_shards_bot.models import Character, Rarity
 
@@ -110,8 +111,10 @@ def _request_page(client: httpx.Client, *, page: int, per_page: int) -> dict:
             response.raise_for_status()
             return response.json()["data"]["Page"]
         retry_after = float(response.headers.get("Retry-After", DEFAULT_RETRY_AFTER_SECONDS))
+        logger.warning("AniList rate-limited us on page {}, retrying in {}s", page, retry_after)
         time.sleep(retry_after)
     msg = f"AniList rate limit retries exhausted (page {page})"
+    logger.error(msg)
     raise RuntimeError(msg)
 
 
@@ -123,16 +126,26 @@ def fetch_top_characters(
     candidates: list[RosterCandidate] = []
     page = 1
     while len(candidates) < limit:
+        logger.debug(
+            "Fetching AniList page {} (have {}/{} candidates)", page, len(candidates), limit
+        )
         page_data = _request_page(client, page=page, per_page=page_size)
+        skipped = 0
         for raw in page_data["characters"]:
             candidate = _parse_candidate(raw)
             if candidate is not None:
                 candidates.append(candidate)
+            else:
+                skipped += 1
             if len(candidates) >= limit:
                 break
+        if skipped:
+            logger.debug("Skipped {} characters on page {} (missing art/series)", skipped, page)
         if not page_data["pageInfo"]["hasNextPage"]:
+            logger.info("AniList has no more pages; stopping at {} candidates", len(candidates))
             break
         page += 1
+    logger.info("Fetched {} roster candidates from AniList", len(candidates))
     return candidates
 
 
@@ -196,4 +209,5 @@ def upsert_characters(session: Session, characters: Iterable[Character]) -> int:
         session.merge(character)
         count += 1
     session.commit()
+    logger.info("Upserted {} characters into the roster", count)
     return count

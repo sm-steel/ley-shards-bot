@@ -10,6 +10,7 @@ Handlers expect `context.bot_data["config"]` to hold the running Config
 
 from __future__ import annotations
 
+from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -21,7 +22,10 @@ from ley_shards_bot.time_utils import utc_now
 def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     config = context.bot_data["config"]
     user = update.effective_user
-    return user is not None and user.id in config.admin_user_ids
+    is_admin = user is not None and user.id in config.admin_user_ids
+    if user is not None and not is_admin:
+        logger.warning("Non-admin {} attempted an admin-only economy command", user.id)
+    return is_admin
 
 
 def _replied_to_user_id(update: Update) -> int | None:
@@ -40,6 +44,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     if user is None or message is None:
         return
+    logger.debug("/daily from {}", user.id)
 
     with session_scope() as session:
         result = economy.claim_daily(session, user.id, now=utc_now())
@@ -61,6 +66,7 @@ async def trickle_message_handler(update: Update, context: ContextTypes.DEFAULT_
     user = update.effective_user
     if user is None:
         return
+    logger.trace("Trickle check for {}", user.id)
 
     with session_scope() as session:
         economy.apply_trickle(session, user.id, today=utc_now().date())
@@ -70,6 +76,9 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     message = update.effective_message
     if message is None:
         return
+    logger.debug(
+        "/award_guess from {}", update.effective_user.id if update.effective_user else None
+    )
     if not _is_admin(update, context):
         await message.reply_text("Admins only.")
         return
@@ -93,6 +102,7 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     if message is None:
         return
+    logger.debug("/grant from {}", update.effective_user.id if update.effective_user else None)
     if not _is_admin(update, context):
         await message.reply_text("Admins only.")
         return
@@ -112,6 +122,7 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         try:
             new_balance = economy.grant(session, target_id, amount)
         except ValueError as exc:
+            logger.debug("/grant rejected: {}", exc)
             await message.reply_text(str(exc))
             return
 
