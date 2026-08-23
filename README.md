@@ -27,3 +27,18 @@ uv run ruff check .      # lint
 uv run ruff format .     # format
 uv run ty check          # type check
 ```
+
+## Deployment
+
+Runs entirely in Docker (bot + MariaDB), via `docker-compose.yml`. On the
+target host (moscow):
+
+```sh
+cp .env.example .env     # fill in real secrets — see comments in the file
+docker compose up -d --build
+docker compose logs -f bot
+```
+
+The `mariadb` service owns its data in a named volume (`mariadb_data`); the
+bot connects to it over the compose network as `mariadb:3306`, not
+`localhost`.
