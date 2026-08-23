@@ -31,7 +31,7 @@ def engine(monkeypatch):
 
     @contextmanager
     def fake_session_scope():
-        session = Session(engine)
+        session = Session(engine, expire_on_commit=False)
         try:
             yield session
             session.commit()

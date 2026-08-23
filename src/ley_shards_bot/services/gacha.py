@@ -1,0 +1,280 @@
+"""The gacha pull engine: pity math, banner/rarity/character selection,
+ownership + Echoes bookkeeping. See ARCHITECTURE.md's Gacha pulls section
+for the rules this encodes.
+
+Framework-agnostic — no python-telegram-bot imports (see CLAUDE.md).
+
+Split deliberately into pure functions (five_star_probability, roll_rarity,
+next_pity_counts, resolve_event_five_star — no DB, no I/O) and the
+DB-touching orchestration (pull_single, pull_ten) that calls them. The pure
+half is what tests/services/test_gacha.py statistically simulates over
+thousands of trials; the orchestration half is tested against a real
+in-memory session instead.
+"""
+
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from sqlalchemy import select
+
+from ley_shards_bot.models import (
+    Banner,
+    BannerType,
+    Character,
+    PityState,
+    PlayerCharacter,
+    Pull,
+    Rarity,
+)
+from ley_shards_bot.services.players import get_or_create_player
+from ley_shards_bot.time_utils import utc_now
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from datetime import datetime
+
+    from sqlalchemy.orm import Session
+
+PULL_COST_LEY_SHARDS = 160
+TEN_PULL_SIZE = 10
+TEN_PULL_COST_LEY_SHARDS = PULL_COST_LEY_SHARDS * TEN_PULL_SIZE
+
+STANDARD_BANNER_NAME = "Standard Banner"
+
+# 5-star pity: base rate, then a soft-pity ramp starting at pull 74,
+# guaranteed by pull 90. Pull numbers below are 1-indexed (the Nth pull
+# since the last 5-star, inclusive of this one).
+BASE_FIVE_STAR_RATE = 0.006
+FIVE_STAR_SOFT_PITY_START = 74
+FIVE_STAR_HARD_PITY = 90
+FIVE_STAR_SOFT_PITY_INCREMENT = 0.06
+
+# 4-star pity: base rate, hard-guaranteed at least once every 10 pulls.
+# A 5-star also counts as "4-star or better" and resets this counter too.
+BASE_FOUR_STAR_RATE = 0.13
+FOUR_STAR_HARD_PITY = 10
+
+ECHOES_PER_DUPLICATE: dict[Rarity, int] = {
+    Rarity.THREE_STAR: 5,
+    Rarity.FOUR_STAR: 15,
+    Rarity.FIVE_STAR: 50,
+}
+
+
+class InsufficientLeyShardsError(Exception):
+    def __init__(self, required: int, available: int) -> None:
+        self.required = required
+        self.available = available
+        super().__init__(f"Need {required} Ley Shards, have {available}.")
+
+
+class EmptyRarityPoolError(Exception):
+    """Raised if no characters of a rolled rarity exist — an empty or
+    incomplete roster, not a player-facing condition."""
+
+
+@dataclass(frozen=True)
+class PullOutcome:
+    character: Character
+    rarity: Rarity
+    is_new: bool
+    echoes_gained: int
+    is_rate_up: bool | None  # None unless this was an event-banner 5-star
+
+
+# ---------------------------------------------------------------------------
+# Pure pity/RNG math
+# ---------------------------------------------------------------------------
+
+
+def five_star_probability(pulls_since_last_5star: int) -> float:
+    """Probability the *next* pull is a 5-star, given how many pulls it's
+    been since the last one."""
+    pull_number = pulls_since_last_5star + 1
+    if pull_number >= FIVE_STAR_HARD_PITY:
+        return 1.0
+    if pull_number < FIVE_STAR_SOFT_PITY_START:
+        return BASE_FIVE_STAR_RATE
+    pulls_into_ramp = pull_number - FIVE_STAR_SOFT_PITY_START + 1
+    return min(1.0, BASE_FIVE_STAR_RATE + pulls_into_ramp * FIVE_STAR_SOFT_PITY_INCREMENT)
+
+
+def roll_rarity(
+    pulls_since_last_5star: int, pulls_since_last_4star: int, rng: random.Random
+) -> Rarity:
+    if rng.random() < five_star_probability(pulls_since_last_5star):
+        return Rarity.FIVE_STAR
+
+    four_star_forced = (pulls_since_last_4star + 1) >= FOUR_STAR_HARD_PITY
+    if four_star_forced or rng.random() < BASE_FOUR_STAR_RATE:
+        return Rarity.FOUR_STAR
+
+    return Rarity.THREE_STAR
+
+
+def next_pity_counts(
+    pulls_since_last_5star: int, pulls_since_last_4star: int, rarity: Rarity
+) -> tuple[int, int]:
+    """Pity counters after a pull of the given rarity. A 5-star resets
+    both (it's also "4-star or better"); a 4-star resets only its own."""
+    if rarity == Rarity.FIVE_STAR:
+        return 0, 0
+    if rarity == Rarity.FOUR_STAR:
+        return pulls_since_last_5star + 1, 0
+    return pulls_since_last_5star + 1, pulls_since_last_4star + 1
+
+
+def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> tuple[bool, bool]:
+    """The classic 50/50: returns (is_rate_up, guaranteed_rate_up_next_time).
+    A prior loss (guaranteed_rate_up=True coming in) always wins this time
+    and clears the flag; otherwise it's a coin flip, and losing sets the
+    flag for the banner's next 5-star."""
+    if guaranteed_rate_up:
+        return True, False
+    won = rng.random() < 0.5
+    return won, not won
+
+
+def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
+    if not pool:
+        msg = "No characters available for this rarity — has the roster been ingested?"
+        raise EmptyRarityPoolError(msg)
+    return rng.choice(list(pool))
+
+
+# ---------------------------------------------------------------------------
+# DB-touching orchestration
+# ---------------------------------------------------------------------------
+
+
+def get_or_create_standard_banner(session: Session) -> Banner:
+    banner = session.scalar(select(Banner).where(Banner.type == BannerType.STANDARD))
+    if banner is None:
+        banner = Banner(type=BannerType.STANDARD, name=STANDARD_BANNER_NAME)
+        session.add(banner)
+        session.flush()
+    return banner
+
+
+def _get_or_create_pity(session: Session, player_id: int, banner_type: BannerType) -> PityState:
+    pity = session.get(PityState, (player_id, banner_type))
+    if pity is None:
+        pity = PityState(player_id=player_id, banner_type=banner_type)
+        session.add(pity)
+        session.flush()
+    return pity
+
+
+def _characters_of_rarity(session: Session, rarity: Rarity) -> list[Character]:
+    return list(session.scalars(select(Character).where(Character.rarity == rarity)))
+
+
+def _grant_character(session: Session, player_id: int, character: Character) -> tuple[bool, int]:
+    """Add a copy to the player's collection, or convert the duplicate to
+    Echoes. Returns (is_new, echoes_gained)."""
+    ownership = session.get(PlayerCharacter, (player_id, character.anilist_id))
+    if ownership is None:
+        session.add(PlayerCharacter(player_id=player_id, character_id=character.anilist_id))
+        return True, 0
+
+    ownership.copies_owned += 1
+    echoes = ECHOES_PER_DUPLICATE[character.rarity]
+    player = get_or_create_player(session, player_id)
+    player.echoes += echoes
+    return False, echoes
+
+
+def _execute_single_pull(
+    session: Session, player_id: int, banner: Banner, rng: random.Random, now: datetime
+) -> PullOutcome:
+    pity = _get_or_create_pity(session, player_id, banner.type)
+
+    rarity = roll_rarity(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rng)
+    pity.pulls_since_last_5star, pity.pulls_since_last_4star = next_pity_counts(
+        pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity
+    )
+
+    is_event_five_star = (
+        banner.type == BannerType.EVENT
+        and rarity == Rarity.FIVE_STAR
+        and banner.rate_up_character_id is not None
+    )
+    is_rate_up: bool | None = None
+    character: Character | None = None
+    if is_event_five_star:
+        is_rate_up, pity.guaranteed_rate_up = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        if is_rate_up:
+            character = session.get(Character, banner.rate_up_character_id)
+
+    if character is None:
+        character = pick_character(_characters_of_rarity(session, rarity), rng)
+
+    is_new, echoes_gained = _grant_character(session, player_id, character)
+    session.add(
+        Pull(
+            player_id=player_id,
+            banner_id=banner.id,
+            character_id=character.anilist_id,
+            pulled_at=now,
+        )
+    )
+
+    return PullOutcome(
+        character=character,
+        rarity=rarity,
+        is_new=is_new,
+        echoes_gained=echoes_gained,
+        is_rate_up=is_rate_up,
+    )
+
+
+def pull_single(
+    session: Session,
+    player_id: int,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> PullOutcome:
+    rng = rng or random.Random()
+    now = now or utc_now()
+
+    player = get_or_create_player(session, player_id)
+    if player.ley_shards < PULL_COST_LEY_SHARDS:
+        raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, player.ley_shards)
+    player.ley_shards -= PULL_COST_LEY_SHARDS
+
+    outcome = _execute_single_pull(session, player_id, banner, rng, now)
+    session.commit()
+    return outcome
+
+
+def pull_ten(
+    session: Session,
+    player_id: int,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[PullOutcome]:
+    """Ten pulls charged as one batch. No separate "at least one 4-star+"
+    logic is needed here: the continuous pulls_since_last_4star pity
+    counter already guarantees a 4-star-or-better at least once every 10
+    pulls on its own (see FOUR_STAR_HARD_PITY) — ten sequential pulls
+    through the same engine automatically satisfy it."""
+    rng = rng or random.Random()
+    now = now or utc_now()
+
+    player = get_or_create_player(session, player_id)
+    if player.ley_shards < TEN_PULL_COST_LEY_SHARDS:
+        raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, player.ley_shards)
+    player.ley_shards -= TEN_PULL_COST_LEY_SHARDS
+
+    outcomes = [
+        _execute_single_pull(session, player_id, banner, rng, now) for _ in range(TEN_PULL_SIZE)
+    ]
+    session.commit()
+    return outcomes

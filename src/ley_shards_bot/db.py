@@ -8,6 +8,14 @@ stops being true (YAGNI — see CLAUDE.md).
 Lazily initialized so importing this module (e.g. transitively, via
 commands/) doesn't require DATABASE_URL to be set — only actually opening
 a session does.
+
+expire_on_commit=False deliberately overrides the SQLAlchemy default:
+handlers build their reply (e.g. formatting a PullOutcome's character
+name/image) *after* `with session_scope() as session:` exits, once the
+session has committed and closed. With the default, every attribute on
+every object touched in that session would be expired at commit and
+require a live session to re-fetch on next access — raising
+DetachedInstanceError right when the handler tries to read it.
 """
 
 from __future__ import annotations
@@ -28,7 +36,7 @@ def _get_session_factory() -> sessionmaker[Session]:
     global _engine, _session_factory
     if _session_factory is None:
         _engine = create_engine(database_url())
-        _session_factory = sessionmaker(bind=_engine)
+        _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _session_factory
 
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from ley_shards_bot.models import Player
+from ley_shards_bot.services.players import get_or_create_player
 from ley_shards_bot.time_utils import to_utc_naive
 
 if TYPE_CHECKING:
@@ -23,15 +23,6 @@ TRICKLE_AMOUNT = 20
 
 AWARD_GUESS_AMOUNT = 15
 AWARD_GUESS_DAILY_LIMIT = 3
-
-
-def get_or_create_player(session: Session, telegram_user_id: int) -> Player:
-    player = session.get(Player, telegram_user_id)
-    if player is None:
-        player = Player(telegram_user_id=telegram_user_id)
-        session.add(player)
-        session.flush()
-    return player
 
 
 @dataclass(frozen=True)
