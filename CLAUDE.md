@@ -35,7 +35,10 @@ speculatively.
 
 ## Tooling
 
-Python 3.11+, managed with `uv`. Don't use pip/venv/poetry directly.
+Python 3.11+, managed with `uv`. Don't use pip/venv/poetry directly, and
+don't invoke `ruff`/`ty`/`pytest` as bare commands — always run them through
+`uv run` so they use the project's pinned versions and `.venv`, not
+whatever (if anything) is on PATH.
 
 ```sh
 uv sync                  # install deps + create .venv
@@ -47,6 +50,45 @@ uv run ty check          # type check
 
 Deployment is Docker-only (see `README.md`) — no bare-metal installs on the
 target VPS, including the database.
+
+## Verifying changes
+
+**Before considering any Python change done, run all three — in this
+order, via `uv run` — and fix everything they report:**
+
+```sh
+uv run ruff check .      # lint (add --fix to autofix what's safe to autofix)
+uv run ruff format .     # format
+uv run ty check          # type check
+```
+
+Then run the relevant tests (`uv run pytest`, or a narrower `uv run pytest
+tests/path/to/test_thing.py` while iterating). A change isn't finished if
+any of the four fail — don't leave known ruff/ty findings for later or
+describe work as complete while they're still red.
+
+## Task tracking (GitHub Issues)
+
+Implementation progress is tracked as **GitHub Issues** on this repo
+(`sm-steel/ley-shards-bot`, private), grouped into **Milestones** per phase
+(e.g. "Phase 1: Core Economy & Pulls"). Use the `gh` CLI (`gh issue list`,
+`gh issue create`, `gh issue close`, `gh api repos/sm-steel/ley-shards-bot/milestones`)
+rather than inventing a separate tracking file — the issue tracker is the
+source of truth for what's done/in progress/planned.
+
+**Security rule — no exceptions, even though the repo is private:**
+
+> **Never put real logins, hostnames, IPs, passwords, API keys/tokens, SSH
+> keys, or any other credential into an issue title, issue body, issue
+> comment, PR description, PR comment, or commit message.** This includes
+> the owned VPS infrastructure this bot deploys to. Use the same
+> placeholders as the rest of this repo (`USERNAME`, `PASSWORD`,
+> `PROXY_HOST`, `PROXY_PORT`, `<user>`, `<pass>`, or an alias like `moscow`/
+> `helsinki` with no FQDN) and point at "the ops vault" for real values —
+> never write them out, even "temporarily" or "just to explain the bug."
+> Treat every GitHub Issue/PR as if it could go public, because repo
+> visibility can change and issue history doesn't get quietly cleaned up
+> after the fact.
 
 ## Coding practices
 
