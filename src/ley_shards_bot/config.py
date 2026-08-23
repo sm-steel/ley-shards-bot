@@ -1,0 +1,40 @@
+"""Loads bot configuration from environment / .env."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _require(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _parse_admin_ids(raw: str) -> frozenset[int]:
+    return frozenset(int(part) for part in raw.split(",") if part.strip())
+
+
+@dataclass(frozen=True)
+class Config:
+    bot_token: str
+    gacha_topic_id: int
+    admin_user_ids: frozenset[int]
+    telegram_proxy_url: str | None
+    database_url: str
+
+    @classmethod
+    def from_env(cls) -> Config:
+        return cls(
+            bot_token=_require("BOT_TOKEN"),
+            gacha_topic_id=int(_require("GACHA_TOPIC_ID")),
+            admin_user_ids=_parse_admin_ids(os.environ.get("ADMIN_USER_IDS", "")),
+            telegram_proxy_url=os.environ.get("TELEGRAM_PROXY_URL") or None,
+            database_url=_require("DATABASE_URL"),
+        )
