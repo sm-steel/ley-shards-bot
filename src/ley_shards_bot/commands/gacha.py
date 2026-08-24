@@ -3,9 +3,8 @@
 Thin by design (see CLAUDE.md): parse the Update, call services/gacha.py,
 format the reply. No pity/rarity/economy rules live here.
 
-Scoped to the "🎰 Gacha" topic (config.gacha_topic_id) — see
-ARCHITECTURE.md's Commands & topics section. Expects
-`context.bot_data["config"]` to hold the running Config.
+DM-scoped, not group-topic-scoped — see ARCHITECTURE.md's "Commands &
+topics" section and issue #17.
 """
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ley_shards_bot.commands.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.models import Rarity
 from ley_shards_bot.services import gacha
@@ -27,12 +27,6 @@ _RARITY_STARS = {
 # 10-pull sends a text summary of everything, plus a photo card for these
 # rarities only — every character in a highlight-only feed would be spam.
 _HIGHLIGHT_RARITIES = frozenset({Rarity.FOUR_STAR, Rarity.FIVE_STAR})
-
-
-def _in_gacha_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    config = context.bot_data["config"]
-    message = update.effective_message
-    return message is not None and message.message_thread_id == config.gacha_topic_id
 
 
 def _rate_up_note(outcome: gacha.PullOutcome) -> str:
@@ -64,15 +58,15 @@ def _format_single_caption(outcome: gacha.PullOutcome) -> str:
     return "\n".join(lines)
 
 
-async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:
         return
     logger.debug("/pull from {}", user.id)
-    if not _in_gacha_topic(update, context):
-        logger.debug("/pull from {} rejected: wrong topic", user.id)
-        await message.reply_text("Use this in the 🎰 Gacha topic.")
+    if not in_private_chat(update):
+        logger.debug("/pull from {} rejected: not a DM", user.id)
+        await message.reply_text(NOT_IN_DM_MESSAGE)
         return
 
     with session_scope() as session:
@@ -95,15 +89,15 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:
         return
     logger.debug("/pull10 from {}", user.id)
-    if not _in_gacha_topic(update, context):
-        logger.debug("/pull10 from {} rejected: wrong topic", user.id)
-        await message.reply_text("Use this in the 🎰 Gacha topic.")
+    if not in_private_chat(update):
+        logger.debug("/pull10 from {} rejected: not a DM", user.id)
+        await message.reply_text(NOT_IN_DM_MESSAGE)
         return
 
     with session_scope() as session:
