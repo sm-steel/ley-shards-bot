@@ -7,19 +7,18 @@ Framework-agnostic — no python-telegram-bot imports (see CLAUDE.md).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ley_shards_bot.services.players import get_or_create_player
-from ley_shards_bot.time_utils import to_utc_naive
+from ley_shards_bot.time_utils import game_day, next_game_day_start, to_utc_naive
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 DAILY_AMOUNT = 60
-DAILY_COOLDOWN = timedelta(hours=24)
 
 TRICKLE_AMOUNT = 20
 
@@ -41,18 +40,17 @@ def claim_daily(
     now = to_utc_naive(now)
     player = get_or_create_player(session, telegram_user_id, username=username)
 
-    if player.last_daily_claimed_at is not None:
-        next_claim_at = player.last_daily_claimed_at + DAILY_COOLDOWN
-        if now < next_claim_at:
-            logger.debug(
-                "/daily rejected for {}: next claim at {}", telegram_user_id, next_claim_at
-            )
-            return DailyClaimResult(
-                granted=False,
-                amount=0,
-                new_balance=player.ley_shards,
-                next_claim_at=next_claim_at,
-            )
+    if player.last_daily_claimed_at is not None and game_day(
+        player.last_daily_claimed_at
+    ) == game_day(now):
+        next_claim_at = next_game_day_start(now)
+        logger.debug("/daily rejected for {}: next claim at {}", telegram_user_id, next_claim_at)
+        return DailyClaimResult(
+            granted=False,
+            amount=0,
+            new_balance=player.ley_shards,
+            next_claim_at=next_claim_at,
+        )
 
     player.ley_shards += DAILY_AMOUNT
     player.last_daily_claimed_at = now
@@ -67,7 +65,7 @@ def claim_daily(
         granted=True,
         amount=DAILY_AMOUNT,
         new_balance=player.ley_shards,
-        next_claim_at=now + DAILY_COOLDOWN,
+        next_claim_at=next_game_day_start(now),
     )
 
 

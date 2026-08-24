@@ -12,6 +12,7 @@ exercise real persistence.
 """
 
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -125,6 +126,29 @@ class TestTrickleHandler:
             assert player is not None
             assert player.ley_shards == 20
 
+    async def test_uses_the_fixed_game_day_boundary_not_utc_midnight(self, engine, monkeypatch):
+        # 01:30 UTC is before the 02:00 UTC game-day boundary, so it's
+        # still "yesterday" for reset purposes (see issue #42) — a plain
+        # utc_now().date() would wrongly treat it as the new calendar day.
+        monkeypatch.setattr(
+            economy_commands, "utc_now", lambda: datetime(2026, 1, 2, 1, 30, tzinfo=UTC)
+        )
+        update = _make_update(user_id=2)
+        context = _make_context()
+        await economy_commands.trickle_message_handler(update, context)
+
+        # A second trickle at 02:30 UTC the *same* calendar day is a new
+        # game day (crossed the 02:00 boundary) — should still grant.
+        monkeypatch.setattr(
+            economy_commands, "utc_now", lambda: datetime(2026, 1, 2, 2, 30, tzinfo=UTC)
+        )
+        await economy_commands.trickle_message_handler(_make_update(user_id=2), context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 2)
+            assert player is not None
+            assert player.ley_shards == 40  # granted both times
+
 
 class TestAwardGuessCommand:
     async def test_non_admin_is_rejected(self, engine):
@@ -170,6 +194,31 @@ class TestAwardGuessCommand:
 
         (text,), _ = final.effective_message.reply_text.call_args
         assert "limit" in text.lower()
+
+    async def test_uses_the_fixed_game_day_boundary_not_utc_midnight(self, engine, monkeypatch):
+        # Exhaust the daily limit just before the 02:00 UTC boundary...
+        monkeypatch.setattr(
+            economy_commands, "utc_now", lambda: datetime(2026, 1, 2, 1, 30, tzinfo=UTC)
+        )
+        context = _make_context(admin_ids=frozenset({1}))
+        for _ in range(AWARD_GUESS_DAILY_LIMIT):
+            await economy_commands.award_guess_command(
+                _make_update(user_id=1, replied_user_id=5), context
+            )
+
+        # ...then try again just after it, same calendar day. A plain
+        # utc_now().date() would still call this "today" and reject it;
+        # the fixed game-day boundary (issue #42) treats it as reset.
+        monkeypatch.setattr(
+            economy_commands, "utc_now", lambda: datetime(2026, 1, 2, 2, 30, tzinfo=UTC)
+        )
+        final = _make_update(user_id=1, replied_user_id=5)
+        await economy_commands.award_guess_command(final, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 15 * (AWARD_GUESS_DAILY_LIMIT + 1)
 
     async def test_admin_awards_by_username(self, engine):
         _seed_player(engine, telegram_user_id=5, username="aleksey")

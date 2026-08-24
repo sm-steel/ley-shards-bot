@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
 from ley_shards_bot.services.players import find_player_by_username
-from ley_shards_bot.time_utils import utc_now
+from ley_shards_bot.time_utils import game_day, utc_now
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -129,7 +129,7 @@ async def trickle_message_handler(update: Update, context: ContextTypes.DEFAULT_
     logger.trace("Trickle check for {}", user.id)
 
     with session_scope() as session:
-        economy.apply_trickle(session, user.id, today=utc_now().date(), username=user.username)
+        economy.apply_trickle(session, user.id, today=game_day(utc_now()), username=user.username)
 
 
 async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,7 +158,7 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         target_id, capture_username, _remaining_args = resolved
 
         result = economy.award_guess(
-            session, target_id, today=utc_now().date(), username=capture_username
+            session, target_id, today=game_day(utc_now()), username=capture_username
         )
 
     if result.granted:
