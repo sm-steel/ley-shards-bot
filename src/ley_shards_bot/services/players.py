@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from sqlalchemy import func, select
 
 from ley_shards_bot.models import Player
 
@@ -40,3 +41,16 @@ def get_or_create_player(
         )
         player.username = username
     return player
+
+
+def find_player_by_username(session: Session, username: str) -> Player | None:
+    """Look up a player by their captured @username, case-insensitively —
+    Telegram usernames are unique case-insensitively, so `Aleksey` and
+    `aleksey` must resolve to the same player. Returns `None` if no player
+    has ever been seen with that username (see `get_or_create_player`'s
+    opportunistic capture above — a player who's never used the bot won't
+    be found even if the caller knows their real Telegram username).
+    """
+    return session.scalars(
+        select(Player).where(func.lower(Player.username) == username.lower())
+    ).first()
