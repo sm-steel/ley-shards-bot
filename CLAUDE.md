@@ -77,6 +77,27 @@ reaching for a second component library. Its Claude Code skill
 (https://ui.shadcn.com/docs/skills) is installed in `admin/` once
 `components.json` exists there.
 
+**[qlty](https://github.com/qltysh/qlty) checks Python complexity and
+duplication** — neither is covered by `ruff`/`ty`. It's a standalone
+native binary (installed once per machine via `qlty.sh`'s install
+script, `~/.qlty/bin` — not a `uv` dependency, nothing in
+`pyproject.toml`), configured by the committed `.qlty/qlty.toml`. Only
+its own built-in complexity/duplication analysis is enabled; every
+third-party linter plugin it can also run (ruff, bandit, radarlint,
+hadolint, trufflehog, ripgrep) is explicitly disabled in that config —
+`ruff`/`ty` via `uv run` stay the only linter/type-checker, this tool
+adds a capability they don't have rather than a second copy of one they
+already do.
+
+```sh
+qlty smells --all --no-snippets   # complexity + duplication findings
+qlty metrics --all --sort complexity --limit 15   # per-file complexity/LOC table
+```
+
+Not wired into CI (none exists yet) or a commit gate — run it
+informationally when refactoring or reviewing a large change, not as
+part of the standard verify sequence below.
+
 ## Logging
 
 Uses **loguru** (`from loguru import logger`) everywhere, not stdlib
