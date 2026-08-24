@@ -127,9 +127,12 @@ GitHub-hosted runners only (never self-hosted — GitHub explicitly warns
 against self-hosted runners on public repos, since any fork PR can run
 arbitrary code on one, including reading secrets):
 - **`checks.yml`** (badge in `README.md`) — installs `uv`+`qlty`, then
-  runs `pre-commit/action` against the committed
+  `uv run pre-commit run --all-files` against the committed
   `.pre-commit-config.yaml` — literally the same hooks the local git
-  hook runs, not a second implementation of them.
+  hook runs, not a second implementation of them. Deliberately not the
+  `pre-commit/action` marketplace action: it does its own `pip install
+  pre-commit` into whatever venv is active, but a `uv`-managed venv has
+  no `pip` in it — `pre-commit` is already a `uv` dev dependency here.
 - **`tests.yml`** (badge in `README.md`) — `uv run pytest -q`. No service
   containers: every test fixture uses an in-memory SQLite engine.
 - **`deploy.yml`** — only on a push to `master` (never `pull_request`, so
