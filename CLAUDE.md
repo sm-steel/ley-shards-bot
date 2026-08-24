@@ -103,9 +103,26 @@ finding turns out to be a false positive on inspection (not just
 inconvenient), say so explicitly and get confirmation before touching
 the config — don't default to loosening it.
 
-Not wired into CI (none exists yet) or a commit gate — run it
-informationally when refactoring or reviewing a large change, not as
-part of the standard verify sequence below.
+**All four checks — `ruff check`, `ruff format --check`, `ty check`,
+`qlty smells` — run as a git pre-commit hook** via
+[pre-commit](https://pre-commit.com) (`.pre-commit-config.yaml`,
+installed as a `uv` dev dependency — `uv run pre-commit install` sets up
+the hook once per clone). A commit is blocked if any of them fail;
+output prints straight to the terminal (or to whatever ran `git
+commit`), same as running the commands by hand. Every hook is a `local`
+entry (`language: system`) that shells out to the project's own `uv run
+ruff`/`uv run ty` — deliberately **not** the hosted
+`astral-sh/ruff-pre-commit` repo, which pins its own separate tool
+version independent of this project's `uv.lock` and could drift out of
+sync. `qlty` is expected on `PATH` (see above); a shell opened before
+qlty was installed won't see it until restarted.
+
+To skip in a genuine emergency: `git commit --no-verify` — but fix
+what it would have caught before the next real commit, don't make a
+habit of it.
+
+There's no CI yet — the pre-commit hook is the only automated gate
+today.
 
 ## Logging
 
@@ -148,6 +165,11 @@ Then run the relevant tests (`uv run pytest`, or a narrower `uv run pytest
 tests/path/to/test_thing.py` while iterating). A change isn't finished if
 any of the four fail — don't leave known ruff/ty findings for later or
 describe work as complete while they're still red.
+
+The first three (not `pytest`) plus `qlty smells` also run automatically
+as a git pre-commit hook (see Tooling above) — committing re-verifies
+them regardless, but running them yourself first means the commit
+doesn't just fail on the first attempt.
 
 ## Task tracking (GitHub Issues)
 
