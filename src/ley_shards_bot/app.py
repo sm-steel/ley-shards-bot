@@ -28,28 +28,13 @@ from ley_shards_bot.commands.economy import (
     trickle_message_handler,
 )
 from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
+from ley_shards_bot.commands.help import help_command
+from ley_shards_bot.commands.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
 from ley_shards_bot.config import Config
 from ley_shards_bot.logging_config import setup_logging
 
 if TYPE_CHECKING:
     from telegram import BotCommandScope
-
-# Shown to everyone via / autocomplete (BotCommandScopeDefault).
-PLAYER_COMMANDS = [
-    BotCommand("daily", "Claim your daily Ley Shards"),
-    BotCommand("pull", "Pull once on the gacha banner"),
-    BotCommand("pull10", "Pull ten times on the gacha banner"),
-    BotCommand("collection", "View your character collection"),
-]
-
-# Shown only to admins, on top of the player commands above — each admin
-# gets their own BotCommandScopeChat rather than these appearing in the
-# BotCommandScopeDefault menu everyone sees.
-ADMIN_COMMANDS = [
-    BotCommand("grant", "Grant Ley Shards to a player"),
-    BotCommand("revoke", "Deduct Ley Shards from a player"),
-    BotCommand("award_guess", "Award a correct-guess bonus"),
-]
 
 
 def _command_registrations(
@@ -94,6 +79,7 @@ def build_application(config: Config) -> Application:
     application.add_handler(CommandHandler("pull", pull_command))
     application.add_handler(CommandHandler("pull10", pull_ten_command))
     application.add_handler(CommandHandler("collection", collection_command))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CallbackQueryHandler(collection_page_callback, pattern=r"^coll:"))
 
     # Own handler group (not the default group 0): PTB runs at most one
