@@ -55,14 +55,33 @@ doesn't exist until Phase 1.2.
 ## Pity
 
 Genshin-shaped, tracked per player per **banner type** (not per specific
-banner instance — event pity persists across event banner rotations,
-since only one event banner is ever active at a time).
+banner instance).
 
 - **5★:** base rate 0.6%. Soft pity starts ramping at pull 74 (+6
   percentage points per pull past that), hard pity (guaranteed) at pull
   90.
 - **4★:** base rate 13%, hard-guaranteed at least once every 10 pulls
   (a 5★ also counts as "4★ or better" and resets this counter too).
+
+### Pity never resets — it's always safe to pull
+
+Because pity is keyed by **banner type**, not by which specific banner
+happens to be running, a player's pity counter **carries over untouched**
+when one event banner ends and the next one begins — for *both* the
+event-character banner and its paired event-weapon banner. Nothing about
+switching to a new event ever zeroes anyone's progress.
+
+Concretely: if a player is sitting at 60 pulls into their event-character
+pity when that banner rotates out, they start the *next* event character
+banner already at 60, not 0 — same for event-weapon pity, independently.
+(Only landing an actual 5★ resets its own counter, exactly as it always
+has — that's normal pity, not a rotation penalty.)
+
+This is a deliberate player-safety guarantee, not an incidental side
+effect of how `pity_state` happens to be keyed: **a player can never
+"lose" Ley Shards, tickets, or progress by pulling on an event banner**
+just because it might rotate out before they hit their 5★. Pity spent
+now is never wasted spend later.
 
 ```mermaid
 xychart-beta
