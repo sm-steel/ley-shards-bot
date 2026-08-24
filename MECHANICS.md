@@ -14,6 +14,7 @@ that's deliberately not repeated here.
 | Feature | Status |
 |---|---|
 | Ley Shards, Echoes, `/daily`/trickle/`/award_guess`/`/grant` | **Implemented** (Phase 1) |
+| Fixed-time (02:00 UTC) daily reset for `/daily`/trickle/`/award_guess` | Planned — bugfix, see "Daily reset" below |
 | Characters: rarity, placeholder base stats | **Implemented** (Phase 1) |
 | Character `description`/tags (AniList-sourced) | Planned (Phase 1.1) |
 | Standard/event banner tickets | Planned (Phase 1.1) |
@@ -27,7 +28,7 @@ that's deliberately not repeated here.
 
 | Currency | Source | Spend |
 |---|---|---|
-| **Ley Shards** 💎 | `/daily` (60, once/rolling-24h); first message of the day (20, auto, once/day); `/award_guess @user` (15, admin/mod-only, rate-limited to 3/day per target); `/grant` (arbitrary, admin-only) | The base currency — direct pulls, or converted into banner tickets via `/buy_ticket` (Phase 1.1). See `GACHA.md`'s "Pull costs" for the confirm-before-spend rule. |
+| **Ley Shards** 💎 | `/daily` (60, once per game day — see "Daily reset" below); first message of the game day (20, auto, once per game day); `/award_guess @user` (15, admin/mod-only, rate-limited to 3 per game day per target); `/grant` (arbitrary, admin-only) | The base currency — direct pulls, or converted into banner tickets via `/buy_ticket` (Phase 1.1). See `GACHA.md`'s "Pull costs" for the confirm-before-spend rule. |
 | **Echoes** | Duplicate pulls of an already-maxed character (constellation 6) or weapon (refinement 5, Phase 1.2), scaled by rarity | Banked, not yet spendable — reserved for a future ascension/combat system (Phase 2). Exists so pulling stays a real sink even after a character/weapon is fully leveled — see `GACHA.md`'s "Duplicates" section for exactly when a pull becomes Echoes instead of a level. |
 | **Standard ticket** (Phase 1.1) | `/buy_ticket standard <count>`, 160 Ley Shards each | Standard-banner pulls only. |
 | **Event ticket** (Phase 1.1) | `/buy_ticket event <count>`, 160 Ley Shards each | Event-character-banner pulls only. |
@@ -37,6 +38,33 @@ Tickets are plain balance columns on `players` (fungible, like Ley Shards
 and Echoes), not individually-owned items — see `ARCHITECTURE.md`'s data
 model. Full ticket-purchase/spend mechanics live in `GACHA.md`; this table
 is the currency reference, not the pull-time behavior.
+
+### Daily reset
+
+**Planned — fixing a Phase 1 bug found in manual validation (issue #9), not
+yet implemented.** Every "once per day" limit above —
+`/daily`, the first-message trickle, and `/award_guess`'s per-target
+3/day cap — resets at a single fixed wall-clock time, **02:00 UTC**, not
+at rolling 24h-since-last-claim and not at UTC midnight. This is the
+**game day** boundary, and it applies to `/daily`/trickle/`/award_guess`
+today and to any future daily-reset mechanic (a Phase 1.1/1.2 feature
+that needs "once per day" reuses the same boundary rather than inventing
+a new one).
+
+Concretely: a moment's game day is its UTC calendar date *after
+subtracting 2 hours* — so `2026-08-24 01:59 UTC` is still game day
+`2026-08-23`, and `2026-08-24 02:00 UTC` is game day `2026-08-24`. Two
+claims are "the same day" iff they fall in the same game day, however
+close together or far apart the wall-clock gap between them actually is.
+
+This replaces `/daily`'s original rolling-24h cooldown (claim, then wait
+24h from that exact moment) — found during Phase 1 manual validation
+(issue #9) to be the wrong model: a fixed reset time is the standard,
+predictable shape for a daily-claim game mechanic (players learn "reset
+is at 2am UTC" once, rather than tracking a personal rolling timer per
+claim), and it's what `/award_guess`'s per-target limit already
+approximated (UTC midnight) — this just moves all three onto the same
+explicit boundary instead of two different implicit ones.
 
 ## Characters
 
