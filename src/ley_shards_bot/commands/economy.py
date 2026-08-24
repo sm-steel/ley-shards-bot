@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.orm import Session
-    from telegram import Message
 
 
 def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -78,7 +77,6 @@ def _username_from_args(args: list[str]) -> str | None:
 
 async def _resolve_target(
     update: Update,
-    message: Message,
     session: Session,
     args: list[str],
     *,
@@ -91,7 +89,16 @@ async def _resolve_target(
     consumed if there was one (so callers parse e.g. an amount from it
     instead of from `args` directly). On failure, sends a friendly reply
     itself (unknown username, or no target at all) and returns None.
+
+    Doesn't take `message` separately — every caller has already
+    null-checked `update.effective_message` before calling this, so it's
+    re-derived here rather than passed as a redundant parameter (see
+    issue #48).
     """
+    message = update.effective_message
+    if message is None:
+        return None
+
     target_username = _username_from_args(args)
     if target_username is not None:
         target_player = find_player_by_username(session, target_username)
@@ -158,7 +165,6 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     with session_scope() as session:
         resolved = await _resolve_target(
             update,
-            message,
             session,
             context.args or [],
             reply_hint=(
@@ -211,7 +217,6 @@ async def _execute_amount_command(
     with session_scope() as session:
         resolved = await _resolve_target(
             update,
-            message,
             session,
             context.args or [],
             reply_hint=(
