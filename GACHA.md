@@ -293,10 +293,48 @@ where this split even applies differ by banner (see the flowchart above):
   weapons are on the paired weapon banner instead).
 - **Weapon banner:** no split — everything is a weapon.
 
-## Duplicates → Echoes
+## Duplicates: constellations, refinement, then Echoes
 
-A duplicate pull (character or, from Phase 1.2, weapon) converts into a
-secondary currency, **Echoes**, scaled by rarity, instead of granting a
-second copy. Echoes are banked for a future ascension/combat system —
-see `MECHANICS.md`. This keeps Ley Shards a meaningful sink rather than a
-system where every pull after the first copy is a refund.
+A duplicate pull doesn't just become currency — first it levels up the
+character or weapon itself, up to a cap. Only once that cap is reached
+does a further duplicate convert into Echoes. (This reinterprets
+`copies_owned`, an already-shipped Phase 1 column — no new column, but a
+real refactor of the shipped duplicate-handling logic, `PullOutcome`, and
+the `/pull`/`/collection` reply text that reports it.)
+
+### Characters: constellations (working name — final name TBD)
+
+Every character has **6 constellation levels**. The first copy a player
+pulls is the base character (constellation 0 — unlocked, unenhanced).
+Each subsequent duplicate advances it one constellation level instead of
+being wasted — **7 total copies** (1 base + 6 constellation levels) fully
+constellates a character. Only once a player already owns that 7th copy
+does another duplicate convert to Echoes, scaled by rarity as before.
+
+**What each constellation actually grants is Phase 2's job** — passive
+abilities, once combat design exists (see `ARCHITECTURE.md`'s
+forward-compatibility guardrails: a future `character_constellations`-
+shaped table is exactly what those levels will eventually hang off of).
+This phase only needs the counter and the pull-time logic, not the
+effects.
+
+### Weapons: refinement (working name — final name TBD, Phase 1.2)
+
+Same shape, for weapons, with Genshin's real asymmetry carried over
+deliberately: a weapon's first copy already counts as **refinement rank
+1** (a lone weapon is fully functional on its own — refinement enhances
+it further, it doesn't unlock it), and each duplicate advances one rank
+up to **refinement 5** — **5 total copies** maxes a weapon, not 7. Beyond
+that, further duplicates convert to Echoes the same way. Reuses
+`player_weapons.copies_owned` (1 through 5 = refinement 1 through 5) the
+same way characters reuse theirs.
+
+### Echoes, unchanged
+
+Once a character reaches constellation 6 (7 copies) or a weapon reaches
+refinement 5 (5 copies), further duplicates convert into **Echoes**,
+scaled by rarity, exactly as before. Echoes are banked for a future
+ascension/combat system — see `MECHANICS.md`. This keeps Ley Shards a
+meaningful sink rather than a system where every pull after the first
+copy is a refund — it just takes longer to reach that point now that
+duplicates do something first.
