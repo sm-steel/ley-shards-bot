@@ -10,7 +10,13 @@ instead: convert to naive UTC right when a value enters the system
 implicitly UTC from then on.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+
+# Every "once per day" limit (/daily, trickle, /award_guess — see
+# MECHANICS.md's "Daily reset") resets at this fixed wall-clock hour, not
+# at UTC midnight and not on a rolling 24h-since-last-claim basis. See
+# issue #42.
+GAME_DAY_RESET_HOUR_UTC = 2
 
 
 def utc_now() -> datetime:
@@ -26,3 +32,22 @@ def to_utc_naive(moment: datetime) -> datetime:
     if moment.tzinfo is None:
         return moment
     return moment.astimezone(UTC).replace(tzinfo=None)
+
+
+def game_day(moment: datetime) -> date:
+    """The "game day" `moment` falls in — the shared boundary for every
+    daily reset (see GAME_DAY_RESET_HOUR_UTC above). Two moments are "the
+    same day" for reset purposes iff `game_day` returns the same date for
+    both, however close together or far apart the wall-clock gap between
+    them actually is."""
+    return (to_utc_naive(moment) - timedelta(hours=GAME_DAY_RESET_HOUR_UTC)).date()
+
+
+def next_game_day_start(moment: datetime) -> datetime:
+    """The next 02:00 UTC boundary strictly after `moment` — used to
+    report "claim again at" for fixed-boundary daily resets."""
+    moment = to_utc_naive(moment)
+    todays_boundary = moment.replace(
+        hour=GAME_DAY_RESET_HOUR_UTC, minute=0, second=0, microsecond=0
+    )
+    return todays_boundary if moment < todays_boundary else todays_boundary + timedelta(days=1)

@@ -14,7 +14,7 @@ that's deliberately not repeated here.
 | Feature | Status |
 |---|---|
 | Ley Shards, Echoes, `/daily`/trickle/`/award_guess`/`/grant` | **Implemented** (Phase 1) |
-| Fixed-time (02:00 UTC) daily reset for `/daily`/trickle/`/award_guess` | Planned — bugfix, see "Daily reset" below |
+| Fixed-time (02:00 UTC) daily reset for `/daily`/trickle/`/award_guess` | **Implemented** (Phase 1, fixed post-launch — see "Daily reset" below) |
 | Characters: rarity, placeholder base stats | **Implemented** (Phase 1) |
 | Character `description`/tags (AniList-sourced) | Planned (Phase 1.1) |
 | Standard/event banner tickets | Planned (Phase 1.1) |
@@ -41,8 +41,8 @@ is the currency reference, not the pull-time behavior.
 
 ### Daily reset
 
-**Planned — fixing a Phase 1 bug found in manual validation (issue #9), not
-yet implemented.** Every "once per day" limit above —
+**Implemented.** Fixes a Phase 1 bug found in manual validation (issue
+#9) — see issue #42. Every "once per day" limit above —
 `/daily`, the first-message trickle, and `/award_guess`'s per-target
 3/day cap — resets at a single fixed wall-clock time, **02:00 UTC**, not
 at rolling 24h-since-last-claim and not at UTC midnight. This is the

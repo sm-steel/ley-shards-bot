@@ -31,8 +31,12 @@ def session():
 
 
 class TestClaimDaily:
+    """Daily reset is a fixed 02:00 UTC boundary (the "game day" — see
+    MECHANICS.md's "Daily reset", issue #42), not a rolling 24h cooldown
+    and not UTC midnight."""
+
     def test_first_claim_grants_the_full_amount(self, session):
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
         result = claim_daily(session, 1, now=now)
 
@@ -40,7 +44,7 @@ class TestClaimDaily:
         assert result.amount == DAILY_AMOUNT
         assert result.new_balance == DAILY_AMOUNT
 
-    def test_second_claim_within_24h_is_rejected(self, session):
+    def test_second_claim_same_game_day_is_rejected(self, session):
         first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
         claim_daily(session, 1, now=first)
 
@@ -51,15 +55,29 @@ class TestClaimDaily:
         assert result.amount == 0
         assert result.new_balance == DAILY_AMOUNT  # unchanged
 
-    def test_claim_after_24h_succeeds_again(self, session):
-        first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    def test_claim_shortly_after_the_boundary_succeeds_even_less_than_24h_later(self, session):
+        # 2h45m apart — nowhere near a rolling 24h cooldown — but the
+        # 02:00 UTC boundary between them makes it a new game day.
+        first = datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
         claim_daily(session, 1, now=first)
 
-        later = first + timedelta(hours=24, minutes=1)
-        result = claim_daily(session, 1, now=later)
+        second = datetime(2026, 1, 2, 2, 15, tzinfo=UTC)
+        result = claim_daily(session, 1, now=second)
 
         assert result.granted is True
         assert result.new_balance == DAILY_AMOUNT * 2
+
+    def test_claim_just_before_the_boundary_next_day_is_still_rejected(self, session):
+        # Almost 24h apart, but both moments fall before the *next*
+        # 02:00 UTC boundary — still the same game day.
+        first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        claim_daily(session, 1, now=first)
+
+        second = datetime(2026, 1, 2, 1, 59, tzinfo=UTC)
+        result = claim_daily(session, 1, now=second)
+
+        assert result.granted is False
+        assert result.new_balance == DAILY_AMOUNT  # unchanged
 
     def test_rejected_claim_reports_next_claim_time(self, session):
         first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -67,11 +85,12 @@ class TestClaimDaily:
 
         result = claim_daily(session, 1, now=first + timedelta(hours=1))
 
-        # Stored/returned as naive UTC by convention — see time_utils.py.
-        assert result.next_claim_at == datetime(2026, 1, 2, 12, 0)  # noqa: DTZ001
+        # The next 02:00 UTC boundary after the rejected attempt — stored/
+        # returned as naive UTC by convention, see time_utils.py.
+        assert result.next_claim_at == datetime(2026, 1, 2, 2, 0)  # noqa: DTZ001
 
     def test_captures_username(self, session):
-        claim_daily(session, 1, now=datetime(2026, 1, 1, tzinfo=UTC), username="aleksey")
+        claim_daily(session, 1, now=datetime(2026, 1, 1, 12, 0, tzinfo=UTC), username="aleksey")
 
         assert session.get(Player, 1).username == "aleksey"
 
