@@ -1,5 +1,8 @@
 # ley-shards-bot
 
+![Checks](https://github.com/sm-steel/ley-shards-bot/actions/workflows/checks.yml/badge.svg)
+![Tests](https://github.com/sm-steel/ley-shards-bot/actions/workflows/tests.yml/badge.svg)
+
 Private Telegram gacha game bot for our group. Players earn **Ley Shards** 💎
 and spend them pulling real anime characters (sourced from AniList) on
 standard/event banners, with classic pity mechanics. Runs on `moscow`,
@@ -42,3 +45,14 @@ docker compose logs -f bot
 The `mariadb` service owns its data in a named volume (`mariadb_data`); the
 bot connects to it over the compose network as `mariadb:3306`, not
 `localhost`.
+
+## Continuous Integration
+
+Two GitHub Actions workflows run on every push/PR — **Checks**
+(`.github/workflows/checks.yml`: `ruff`, `ty`, and `qlty smells`, via the
+same `.pre-commit-config.yaml` the local pre-commit hook uses) and
+**Tests** (`.github/workflows/tests.yml`: `pytest`). A third workflow,
+**Deploy** (`.github/workflows/deploy.yml`), runs only on a push to
+`master`: it re-verifies both of the above, then SSHs into `moscow` and
+rebuilds/restarts the bot stack — merging to `master` is what ships a
+change, no manual deploy step. See `CLAUDE.md` for details.

@@ -121,8 +121,34 @@ To skip in a genuine emergency: `git commit --no-verify` — but fix
 what it would have caught before the next real commit, don't make a
 habit of it.
 
-There's no CI yet — the pre-commit hook is the only automated gate
-today.
+**CI (`.github/workflows/`) runs the exact same checks as the local
+pre-commit hook — never a separate copy of them.** Three workflows,
+GitHub-hosted runners only (never self-hosted — GitHub explicitly warns
+against self-hosted runners on public repos, since any fork PR can run
+arbitrary code on one, including reading secrets):
+- **`checks.yml`** (badge in `README.md`) — installs `uv`+`qlty`, then
+  runs `pre-commit/action` against the committed
+  `.pre-commit-config.yaml` — literally the same hooks the local git
+  hook runs, not a second implementation of them.
+- **`tests.yml`** (badge in `README.md`) — `uv run pytest -q`. No service
+  containers: every test fixture uses an in-memory SQLite engine.
+- **`deploy.yml`** — only on a push to `master` (never `pull_request`, so
+  a fork PR can never reach its secrets). Re-runs both of the above as a
+  `verify` job, then a `deploy` job SSHs into `moscow` (via
+  `webfactory/ssh-agent` + a dedicated `MOSCOW_SSH_KEY` deploy key —
+  **not** the personal key used to administer `moscow` interactively) and
+  runs `git pull --ff-only && docker compose up -d --build &&
+  docker compose exec -T bot uv run alembic upgrade head` — the same
+  commands run by hand before this existed. Merging to `master` is what
+  ships a change now; there's no separate manual deploy step. Secrets
+  (`MOSCOW_SSH_KEY`/`MOSCOW_HOST`/`MOSCOW_USER`) live in the repo's
+  GitHub Settings, never in a committed file — see the vault's
+  infrastructure docs for what "moscow" actually is.
+
+If a local pre-commit pass ever disagrees with `checks.yml`'s result on
+the same commit, that's a bug in the CI setup (a version/config drift
+between local and CI) worth fixing directly, not something to route
+around by re-running or ignoring.
 
 ## Logging
 
