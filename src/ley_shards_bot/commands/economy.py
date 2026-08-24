@@ -39,6 +39,18 @@ def _replied_to_user_id(update: Update) -> int | None:
     return replied_user.id if replied_user is not None else None
 
 
+def _replied_to_username(update: Update) -> str | None:
+    """The @username (if any) of a reply-based admin command's target —
+    captured the same way as the acting user's own, so a player can become
+    @username-targetable just by being replied to, even if they've never
+    used the bot themselves. See issue #12."""
+    message = update.effective_message
+    if message is None or message.reply_to_message is None:
+        return None
+    replied_user = message.reply_to_message.from_user
+    return replied_user.username if replied_user is not None else None
+
+
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
     user = update.effective_user
     message = update.effective_message
@@ -47,7 +59,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.debug("/daily from {}", user.id)
 
     with session_scope() as session:
-        result = economy.claim_daily(session, user.id, now=utc_now())
+        result = economy.claim_daily(session, user.id, now=utc_now(), username=user.username)
 
     if result.granted:
         text = f"+{result.amount} Ley Shards \U0001f48e (balance: {result.new_balance})"
@@ -69,7 +81,7 @@ async def trickle_message_handler(update: Update, context: ContextTypes.DEFAULT_
     logger.trace("Trickle check for {}", user.id)
 
     with session_scope() as session:
-        economy.apply_trickle(session, user.id, today=utc_now().date())
+        economy.apply_trickle(session, user.id, today=utc_now().date(), username=user.username)
 
 
 async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -89,7 +101,9 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     with session_scope() as session:
-        result = economy.award_guess(session, target_id, today=utc_now().date())
+        result = economy.award_guess(
+            session, target_id, today=utc_now().date(), username=_replied_to_username(update)
+        )
 
     if result.granted:
         text = f"+{result.amount} Ley Shards awarded ({result.awards_remaining_today} more today)."
@@ -120,7 +134,9 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     amount = int(args[0])
     with session_scope() as session:
         try:
-            new_balance = economy.grant(session, target_id, amount)
+            new_balance = economy.grant(
+                session, target_id, amount, username=_replied_to_username(update)
+            )
         except ValueError as exc:
             logger.debug("/grant rejected: {}", exc)
             await message.reply_text(str(exc))

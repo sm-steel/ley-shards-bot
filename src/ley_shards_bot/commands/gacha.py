@@ -78,7 +78,7 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     with session_scope() as session:
         banner = gacha.get_or_create_standard_banner(session)
         try:
-            outcome = gacha.pull_single(session, user.id, banner)
+            outcome = gacha.pull_single(session, user.id, banner, username=user.username)
         except gacha.InsufficientLeyShardsError as exc:
             await message.reply_text(
                 f"Not enough Ley Shards \U0001f48e — need {exc.required}, have {exc.available}."
@@ -109,7 +109,7 @@ async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     with session_scope() as session:
         banner = gacha.get_or_create_standard_banner(session)
         try:
-            outcomes = gacha.pull_ten(session, user.id, banner)
+            outcomes = gacha.pull_ten(session, user.id, banner, username=user.username)
         except gacha.InsufficientLeyShardsError as exc:
             await message.reply_text(
                 f"Not enough Ley Shards \U0001f48e — need {exc.required}, have {exc.available}."

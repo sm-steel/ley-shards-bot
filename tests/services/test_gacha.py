@@ -240,6 +240,15 @@ class TestPullSingle:
         assert player is not None
         assert player.ley_shards == 100_000 - PULL_COST_LEY_SHARDS
 
+    def test_captures_username(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        pull_single(session, 1, banner, rng=random.Random(SEED), username="aleksey")
+
+        assert session.get(Player, 1).username == "aleksey"
+
     def test_rejects_insufficient_balance(self, session):
         _seed_roster(session)
         session.add(Player(telegram_user_id=1, ley_shards=10))
@@ -331,6 +340,15 @@ class TestPullTen:
         outcomes = pull_ten(session, 1, banner, rng=random.Random(SEED))
 
         assert len(outcomes) == TEN_PULL_SIZE
+
+    def test_captures_username(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        pull_ten(session, 1, banner, rng=random.Random(SEED), username="aleksey")
+
+        assert session.get(Player, 1).username == "aleksey"
 
     def test_guarantees_at_least_one_four_star_or_better(self, session):
         _seed_roster(session)

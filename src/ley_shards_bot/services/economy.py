@@ -35,9 +35,11 @@ class DailyClaimResult:
     next_claim_at: datetime
 
 
-def claim_daily(session: Session, telegram_user_id: int, *, now: datetime) -> DailyClaimResult:
+def claim_daily(
+    session: Session, telegram_user_id: int, *, now: datetime, username: str | None = None
+) -> DailyClaimResult:
     now = to_utc_naive(now)
-    player = get_or_create_player(session, telegram_user_id)
+    player = get_or_create_player(session, telegram_user_id, username=username)
 
     if player.last_daily_claimed_at is not None:
         next_claim_at = player.last_daily_claimed_at + DAILY_COOLDOWN
@@ -69,10 +71,12 @@ def claim_daily(session: Session, telegram_user_id: int, *, now: datetime) -> Da
     )
 
 
-def apply_trickle(session: Session, telegram_user_id: int, *, today: date) -> bool:
+def apply_trickle(
+    session: Session, telegram_user_id: int, *, today: date, username: str | None = None
+) -> bool:
     """Grant the once-per-day activity trickle. Returns whether it was
     actually granted (False if this player already got it today)."""
-    player = get_or_create_player(session, telegram_user_id)
+    player = get_or_create_player(session, telegram_user_id, username=username)
     if player.last_trickle_date == today:
         logger.debug("Trickle already granted today for {}", telegram_user_id)
         return False
@@ -92,10 +96,16 @@ class AwardGuessResult:
     awards_remaining_today: int
 
 
-def award_guess(session: Session, target_telegram_user_id: int, *, today: date) -> AwardGuessResult:
+def award_guess(
+    session: Session,
+    target_telegram_user_id: int,
+    *,
+    today: date,
+    username: str | None = None,
+) -> AwardGuessResult:
     """Admin/mod-granted bonus for a correct guess in the (manual, not
     bot-run) "guess the anime" topic. Rate-limited per target per day."""
-    player = get_or_create_player(session, target_telegram_user_id)
+    player = get_or_create_player(session, target_telegram_user_id, username=username)
 
     if player.guess_awards_date != today:
         player.guess_awards_date = today
@@ -125,14 +135,20 @@ def award_guess(session: Session, target_telegram_user_id: int, *, today: date) 
     )
 
 
-def grant(session: Session, target_telegram_user_id: int, amount: int) -> int:
+def grant(
+    session: Session,
+    target_telegram_user_id: int,
+    amount: int,
+    *,
+    username: str | None = None,
+) -> int:
     """Admin-only arbitrary grant, e.g. for one-off events. Returns the new
     balance."""
     if amount <= 0:
         msg = "Grant amount must be positive"
         raise ValueError(msg)
 
-    player = get_or_create_player(session, target_telegram_user_id)
+    player = get_or_create_player(session, target_telegram_user_id, username=username)
     player.ley_shards += amount
     session.commit()
     logger.info(

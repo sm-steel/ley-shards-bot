@@ -92,9 +92,12 @@ def _seed_player(engine, telegram_user_id: int = 1, ley_shards: int = 100_000) -
         session.commit()
 
 
-def _make_update(*, user_id: int = 1, thread_id: int | None = GACHA_TOPIC_ID) -> MagicMock:
+def _make_update(
+    *, user_id: int = 1, thread_id: int | None = GACHA_TOPIC_ID, username: str | None = None
+) -> MagicMock:
     update = MagicMock()
     update.effective_user.id = user_id
+    update.effective_user.username = username
     message = MagicMock()
     message.reply_text = AsyncMock()
     message.reply_photo = AsyncMock()

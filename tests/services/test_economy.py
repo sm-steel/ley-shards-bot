@@ -69,6 +69,11 @@ class TestClaimDaily:
         # Stored/returned as naive UTC by convention — see time_utils.py.
         assert result.next_claim_at == datetime(2026, 1, 2, 12, 0)  # noqa: DTZ001
 
+    def test_captures_username(self, session):
+        claim_daily(session, 1, now=datetime(2026, 1, 1, tzinfo=UTC), username="aleksey")
+
+        assert session.get(Player, 1).username == "aleksey"
+
 
 class TestApplyTrickle:
     def test_first_message_of_the_day_grants_trickle(self, session):
@@ -92,6 +97,11 @@ class TestApplyTrickle:
 
         assert applied is True
         assert session.get(Player, 1).ley_shards == TRICKLE_AMOUNT * 2
+
+    def test_captures_username(self, session):
+        apply_trickle(session, 1, today=date(2026, 1, 1), username="aleksey")
+
+        assert session.get(Player, 1).username == "aleksey"
 
 
 class TestAwardGuess:
@@ -122,6 +132,11 @@ class TestAwardGuess:
 
         assert result.granted is True
 
+    def test_captures_target_username(self, session):
+        award_guess(session, 5, today=date(2026, 1, 1), username="aleksey")
+
+        assert session.get(Player, 5).username == "aleksey"
+
 
 class TestGrant:
     def test_adds_arbitrary_amount_to_target_balance(self, session):
@@ -139,3 +154,8 @@ class TestGrant:
     def test_rejects_non_positive_amount(self, session):
         with pytest.raises(ValueError, match="positive"):
             grant(session, 9, 0)
+
+    def test_captures_target_username(self, session):
+        grant(session, 9, 100, username="aleksey")
+
+        assert session.get(Player, 9).username == "aleksey"
