@@ -94,6 +94,15 @@ qlty smells --all --no-snippets   # complexity + duplication findings
 qlty metrics --all --sort complexity --limit 15   # per-file complexity/LOC table
 ```
 
+**Never resolve a qlty finding by loosening its check (raising a
+threshold, disabling a rule, excluding a path) — fix the actual code.**
+A finding is a real signal about the code, not the config; adjusting
+`.qlty/qlty.toml` to make it stop appearing is hiding the problem, not
+solving it, and quietly lowers the bar for everything after it. If a
+finding turns out to be a false positive on inspection (not just
+inconvenient), say so explicitly and get confirmation before touching
+the config — don't default to loosening it.
+
 Not wired into CI (none exists yet) or a commit gate — run it
 informationally when refactoring or reviewing a large change, not as
 part of the standard verify sequence below.
