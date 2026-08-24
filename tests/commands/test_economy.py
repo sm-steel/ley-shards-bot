@@ -49,6 +49,7 @@ def engine(monkeypatch):
 def _make_update(
     *,
     user_id: int = 1,
+    chat_type: str = "private",
     username: str | None = None,
     replied_user_id: int | None = None,
     replied_username: str | None = None,
@@ -56,6 +57,7 @@ def _make_update(
     update = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.username = username
+    update.effective_chat = SimpleNamespace(type=chat_type)
     message = MagicMock()
     message.reply_text = AsyncMock()
     if replied_user_id is not None:
@@ -83,6 +85,17 @@ def _make_context(*, admin_ids: frozenset[int] = frozenset(), args: list[str] | 
 
 
 class TestDailyCommand:
+    async def test_rejects_outside_dm(self, engine):
+        update = _make_update(user_id=1, chat_type="group")
+        context = _make_context()
+
+        await economy_commands.daily_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "dm" in text.lower()
+        with Session(engine) as session:
+            assert session.get(Player, 1) is None
+
     async def test_first_claim_grants_and_replies(self, engine):
         update = _make_update(user_id=1)
         context = _make_context()

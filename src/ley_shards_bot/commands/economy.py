@@ -1,11 +1,15 @@
 """Telegram-facing handlers for the economy: /daily, /award_guess, /grant,
-and the first-message-of-day trickle.
+/revoke, and the first-message-of-day trickle.
 
 Thin by design (see CLAUDE.md): parse the Update, call services/economy.py,
 format the reply. No game rules live here.
 
 Handlers expect `context.bot_data["config"]` to hold the running Config
 (for admin_user_ids) — set once at Application startup.
+
+`/daily` is DM-scoped (see `commands/scoping.py` and issue #17); the
+admin commands and trickle are not — see ARCHITECTURE.md's "Commands &
+topics" section for why.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ley_shards_bot.commands.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
 from ley_shards_bot.services.players import find_player_by_username
@@ -105,6 +110,10 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if user is None or message is None:
         return
     logger.debug("/daily from {}", user.id)
+    if not in_private_chat(update):
+        logger.debug("/daily from {} rejected: not a DM", user.id)
+        await message.reply_text(NOT_IN_DM_MESSAGE)
+        return
 
     with session_scope() as session:
         result = economy.claim_daily(session, user.id, now=utc_now(), username=user.username)

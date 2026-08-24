@@ -1,6 +1,7 @@
 """Tests for the /collection command and its pagination callback."""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -54,9 +55,10 @@ def _seed_owned_characters(engine, player_id: int, count: int) -> None:
         session.commit()
 
 
-def _make_update(*, user_id: int = 1) -> MagicMock:
+def _make_update(*, user_id: int = 1, chat_type: str = "private") -> MagicMock:
     update = MagicMock()
     update.effective_user.id = user_id
+    update.effective_chat = SimpleNamespace(type=chat_type)
     message = MagicMock()
     message.reply_text = AsyncMock()
     update.effective_message = message
@@ -111,6 +113,17 @@ class TestCollectionCommand:
         buttons = [b for row in markup.inline_keyboard for b in row]
         assert any("Next" in b.text for b in buttons)
         assert not any("Prev" in b.text for b in buttons)
+
+    async def test_rejects_outside_dm(self, engine):
+        _seed_owned_characters(engine, 1, count=3)
+        update = _make_update(user_id=1, chat_type="group")
+        context = MagicMock()
+
+        await collection_commands.collection_command(update, context)
+
+        (text,), kwargs = update.effective_message.reply_text.call_args
+        assert "dm" in text.lower()
+        assert kwargs.get("reply_markup") is None
 
 
 class TestCollectionPageCallback:

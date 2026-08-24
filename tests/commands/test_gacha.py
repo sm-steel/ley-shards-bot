@@ -16,8 +16,6 @@ from sqlalchemy.orm import Session
 from ley_shards_bot.commands import gacha as gacha_commands
 from ley_shards_bot.models import Base, Character, Player, Rarity
 
-GACHA_TOPIC_ID = 42
-
 
 @pytest.fixture
 def engine(monkeypatch):
@@ -93,30 +91,28 @@ def _seed_player(engine, telegram_user_id: int = 1, ley_shards: int = 100_000) -
 
 
 def _make_update(
-    *, user_id: int = 1, thread_id: int | None = GACHA_TOPIC_ID, username: str | None = None
+    *, user_id: int = 1, chat_type: str = "private", username: str | None = None
 ) -> MagicMock:
     update = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.username = username
+    update.effective_chat = SimpleNamespace(type=chat_type)
     message = MagicMock()
     message.reply_text = AsyncMock()
     message.reply_photo = AsyncMock()
-    message.message_thread_id = thread_id
     update.effective_message = message
     return update
 
 
 def _make_context() -> MagicMock:
-    context = MagicMock()
-    context.bot_data = {"config": SimpleNamespace(gacha_topic_id=GACHA_TOPIC_ID)}
-    return context
+    return MagicMock()
 
 
 class TestPullCommand:
-    async def test_rejects_outside_gacha_topic(self, engine):
+    async def test_rejects_outside_dm(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
-        update = _make_update(thread_id=999)
+        update = _make_update(chat_type="group")
         context = _make_context()
 
         await gacha_commands.pull_command(update, context)
@@ -124,7 +120,7 @@ class TestPullCommand:
         update.effective_message.reply_text.assert_awaited_once()
         update.effective_message.reply_photo.assert_not_called()
         (text,), _ = update.effective_message.reply_text.call_args
-        assert "gacha" in text.lower()
+        assert "dm" in text.lower()
 
     async def test_successful_pull_replies_with_a_photo_card(self, engine):
         _seed_roster(engine)
@@ -168,15 +164,17 @@ class TestPullCommand:
 
 
 class TestPullTenCommand:
-    async def test_rejects_outside_gacha_topic(self, engine):
+    async def test_rejects_outside_dm(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
-        update = _make_update(thread_id=None)
+        update = _make_update(chat_type="group")
         context = _make_context()
 
         await gacha_commands.pull_ten_command(update, context)
 
         update.effective_message.reply_photo.assert_not_called()
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "dm" in text.lower()
 
     async def test_successful_pull_ten_sends_a_summary(self, engine):
         _seed_roster(engine)
