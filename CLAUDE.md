@@ -6,9 +6,12 @@ AniList) on standard/event banners, with classic gacha pity mechanics.
 Runs as a Docker Compose stack on the `moscow` VPS.
 
 **Read `ARCHITECTURE.md` before making non-trivial changes** — it covers the
-system design, data model, gacha/pity rules, and infra topology (why
-Telegram traffic is proxied through `helsinki`, etc.). This file is about
-where things live and how to work in this repo day to day.
+system design, data model, and infra topology (why Telegram traffic is
+proxied through `helsinki`, etc.). `GACHA.md` covers pull mechanics
+(costs, pity, banners) and `MECHANICS.md` covers the game entities
+(characters, weapons) and economy — read whichever is relevant before
+touching gacha/economy code. This file is about where things live and how
+to work in this repo day to day.
 
 ## Where things are
 
@@ -21,17 +24,30 @@ src/ley_shards_bot/
                    # ingestion. Framework-agnostic — no python-telegram-bot
                    # imports in this package.
   models/         # SQLAlchemy ORM models, one module per table/aggregate
+  api/            # (Phase 1.1) FastAPI routes for the admin panel — same
+                   # rule as commands/: parse the request, call a service,
+                   # return a response, no business logic here either.
+                   # Shares services/+models/ with the bot, doesn't
+                   # reimplement game rules.
 migrations/       # Alembic migrations
 tests/            # mirrors src/ layout; unit tests target services/ and
                    # models/, not the Telegram command handlers directly
 scripts/          # one-off / operational scripts (e.g. roster ingestion CLI)
-Dockerfile, docker-compose.yml   # bot + mariadb, see ARCHITECTURE.md
+admin/            # (Phase 1.1) Vite + TypeScript + React admin frontend —
+                   # separate toolchain, see "Tooling" below. Built to
+                   # static assets and served by api/.
+Dockerfile, docker-compose.yml   # bot + mariadb (+ api from Phase 1.1),
+                                  # see ARCHITECTURE.md
 ```
 
-Current scope is **Phase 1**: bot skeleton, economy, gacha pulls, collection
-viewing. Turn-based combat and story content are explicitly out of scope for
-now (see ARCHITECTURE.md's Roadmap section) — don't build toward them
-speculatively.
+Current scope is **Phase 1** (shipped): bot skeleton, economy, gacha pulls,
+collection viewing. **Phase 1.1** (admin panel, banner curation, banner
+tickets) and **Phase 1.2** (weapons) are designed — see `GACHA.md`,
+`MECHANICS.md`, and `ARCHITECTURE.md` for the target design — but not yet
+built; work happens ticket-by-ticket against the GitHub issues for those
+milestones, not ahead of them. Turn-based combat and story content are
+explicitly out of scope even for those (see `ARCHITECTURE.md`'s Roadmap
+section) — don't build toward them speculatively.
 
 ## Tooling
 
@@ -50,6 +66,16 @@ uv run ty check          # type check
 
 Deployment is Docker-only (see `README.md`) — no bare-metal installs on the
 target VPS, including the database.
+
+**`admin/` (Phase 1.1) is a separate toolchain — Vite + TypeScript +
+React, linted/formatted with `biome`, not `uv`/`ruff`/`ty`.** Don't run
+Python verify commands against it or vice versa; its own verify commands
+land here once the frontend is scaffolded enough to know the exact ones.
+**shadcn/ui is the UI component library for all web work** in `admin/`
+(docs: https://ui.shadcn.com/docs) — reach for it before hand-rolling or
+reaching for a second component library. Its Claude Code skill
+(https://ui.shadcn.com/docs/skills) is installed in `admin/` once
+`components.json` exists there.
 
 ## Logging
 
