@@ -158,3 +158,28 @@ def grant(
         player.ley_shards,
     )
     return player.ley_shards
+
+
+def revoke(
+    session: Session,
+    target_telegram_user_id: int,
+    amount: int,
+    *,
+    username: str | None = None,
+) -> int:
+    """Admin-only balance correction, e.g. undoing a mistaken /grant. Clamps
+    at 0 rather than allowing a negative balance. Returns the new balance."""
+    if amount <= 0:
+        msg = "Revoke amount must be positive"
+        raise ValueError(msg)
+
+    player = get_or_create_player(session, target_telegram_user_id, username=username)
+    player.ley_shards = max(0, player.ley_shards - amount)
+    session.commit()
+    logger.info(
+        "/revoke took {} Ley Shards from {} (balance={})",
+        amount,
+        target_telegram_user_id,
+        player.ley_shards,
+    )
+    return player.ley_shards

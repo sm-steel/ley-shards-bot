@@ -66,9 +66,11 @@ def _make_update(
     return update
 
 
-def _seed_player(engine, telegram_user_id: int, username: str) -> None:
+def _seed_player(engine, telegram_user_id: int, username: str, *, ley_shards: int = 0) -> None:
     with Session(engine) as session:
-        session.add(Player(telegram_user_id=telegram_user_id, username=username))
+        session.add(
+            Player(telegram_user_id=telegram_user_id, username=username, ley_shards=ley_shards)
+        )
         session.commit()
 
 
@@ -253,3 +255,69 @@ class TestGrantCommand:
 
         (text,), _ = update.effective_message.reply_text.call_args
         assert "usage" in text.lower()
+
+
+class TestRevokeCommand:
+    async def test_non_admin_is_rejected(self, engine):
+        update = _make_update(user_id=1, replied_user_id=5)
+        context = _make_context(admin_ids=frozenset(), args=["100"])
+
+        await economy_commands.revoke_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "admin" in text.lower()
+
+    async def test_missing_amount_reports_usage(self, engine):
+        update = _make_update(user_id=1, replied_user_id=5)
+        context = _make_context(admin_ids=frozenset({1}), args=[])
+
+        await economy_commands.revoke_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "usage" in text.lower()
+
+    async def test_admin_revokes_arbitrary_amount(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey", ley_shards=250)
+        update = _make_update(user_id=1, replied_user_id=5)
+        context = _make_context(admin_ids=frozenset({1}), args=["100"])
+
+        await economy_commands.revoke_command(update, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 150
+
+    async def test_admin_revokes_by_username(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey", ley_shards=250)
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@aleksey", "100"])
+
+        await economy_commands.revoke_command(update, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 150
+
+    async def test_unknown_username_reports_friendly_error(self, engine):
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@nobody", "100"])
+
+        await economy_commands.revoke_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "haven't seen" in text.lower()
+        assert "@nobody" in text
+
+    async def test_clamps_at_zero_rather_than_going_negative(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey", ley_shards=50)
+        update = _make_update(user_id=1, replied_user_id=5)
+        context = _make_context(admin_ids=frozenset({1}), args=["100"])
+
+        await economy_commands.revoke_command(update, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 0

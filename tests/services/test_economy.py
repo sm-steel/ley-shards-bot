@@ -18,6 +18,7 @@ from ley_shards_bot.services.economy import (
     award_guess,
     claim_daily,
     grant,
+    revoke,
 )
 
 
@@ -157,5 +158,32 @@ class TestGrant:
 
     def test_captures_target_username(self, session):
         grant(session, 9, 100, username="aleksey")
+
+        assert session.get(Player, 9).username == "aleksey"
+
+
+class TestRevoke:
+    def test_deducts_arbitrary_amount_from_target_balance(self, session):
+        grant(session, 9, 250)
+
+        new_balance = revoke(session, 9, 100)
+
+        assert new_balance == 150
+        assert session.get(Player, 9).ley_shards == 150
+
+    def test_clamps_at_zero_rather_than_going_negative(self, session):
+        grant(session, 9, 50)
+
+        new_balance = revoke(session, 9, 100)
+
+        assert new_balance == 0
+        assert session.get(Player, 9).ley_shards == 0
+
+    def test_rejects_non_positive_amount(self, session):
+        with pytest.raises(ValueError, match="positive"):
+            revoke(session, 9, 0)
+
+    def test_captures_target_username(self, session):
+        revoke(session, 9, 100, username="aleksey")
 
         assert session.get(Player, 9).username == "aleksey"

@@ -21,6 +21,7 @@ from ley_shards_bot.commands.economy import (
     award_guess_command,
     daily_command,
     grant_command,
+    revoke_command,
     trickle_message_handler,
 )
 from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
@@ -40,6 +41,7 @@ def build_application(config: Config) -> Application:
     application.add_handler(CommandHandler("daily", daily_command))
     application.add_handler(CommandHandler("award_guess", award_guess_command))
     application.add_handler(CommandHandler("grant", grant_command))
+    application.add_handler(CommandHandler("revoke", revoke_command))
     application.add_handler(CommandHandler("pull", pull_command))
     application.add_handler(CommandHandler("pull10", pull_ten_command))
     application.add_handler(CommandHandler("collection", collection_command))
