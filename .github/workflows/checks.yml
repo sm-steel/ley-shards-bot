@@ -1,0 +1,33 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project dependencies
+        run: uv sync
+
+      # Just the CLI binary — no Qlty Cloud account involved. Only
+      # complexity/duplication analysis is enabled (see .qlty/qlty.toml);
+      # every third-party linter plugin it could also run is disabled,
+      # ruff/ty stay the only linter/type-checker (see CLAUDE.md).
+      - name: Install qlty
+        uses: qltysh/qlty-action/install@v1
+
+      # Runs the committed .pre-commit-config.yaml as-is — every hook is
+      # `language: system`, shelling out to `uv run ruff`/`uv run ty`/
+      # `qlty`, so this is the exact same check as the local git hook,
+      # not a second copy of it. See CLAUDE.md's Tooling section.
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@v3.0.1
