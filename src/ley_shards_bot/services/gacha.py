@@ -79,6 +79,17 @@ class EmptyRarityPoolError(Exception):
 
 
 @dataclass(frozen=True)
+class PlayerRef:
+    """A player's Telegram identity: id plus the opportunistically
+    captured @username (see #12) — bundled together because pull_single/
+    pull_ten treat "who's pulling" as one concept, not two independent
+    parameters. See issue #49."""
+
+    telegram_user_id: int
+    username: str | None = None
+
+
+@dataclass(frozen=True)
 class PullOutcome:
     character: Character
     rarity: Rarity
@@ -249,33 +260,27 @@ def _execute_single_pull(
 
 
 def pull_single(
-    session: Session,
-    player_id: int,
-    banner: Banner,
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-    username: str | None = None,
+    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
 ) -> PullOutcome:
     rng = rng or random.Random()
-    now = now or utc_now()
+    now = utc_now()
 
-    player = get_or_create_player(session, player_id, username=username)
-    if player.ley_shards < PULL_COST_LEY_SHARDS:
+    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
+    if account.ley_shards < PULL_COST_LEY_SHARDS:
         logger.warning(
             "Pull rejected for {}: need {} Ley Shards, have {}",
-            player_id,
+            player.telegram_user_id,
             PULL_COST_LEY_SHARDS,
-            player.ley_shards,
+            account.ley_shards,
         )
-        raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, player.ley_shards)
-    player.ley_shards -= PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, account.ley_shards)
+    account.ley_shards -= PULL_COST_LEY_SHARDS
 
-    outcome = _execute_single_pull(session, player_id, banner, rng, now)
+    outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
     session.commit()
     logger.info(
         "Pull: player={} banner={} -> {} {} (new={}, echoes={}, rate_up={})",
-        player_id,
+        player.telegram_user_id,
         banner.type,
         outcome.rarity,
         outcome.character.name,
@@ -287,13 +292,7 @@ def pull_single(
 
 
 def pull_ten(
-    session: Session,
-    player_id: int,
-    banner: Banner,
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-    username: str | None = None,
+    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
 ) -> list[PullOutcome]:
     """Ten pulls charged as one batch. No separate "at least one 4-star+"
     logic is needed here: the continuous pulls_since_last_4star pity
@@ -301,27 +300,28 @@ def pull_ten(
     pulls on its own (see FOUR_STAR_HARD_PITY) — ten sequential pulls
     through the same engine automatically satisfy it."""
     rng = rng or random.Random()
-    now = now or utc_now()
+    now = utc_now()
 
-    player = get_or_create_player(session, player_id, username=username)
-    if player.ley_shards < TEN_PULL_COST_LEY_SHARDS:
+    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
+    if account.ley_shards < TEN_PULL_COST_LEY_SHARDS:
         logger.warning(
             "10-pull rejected for {}: need {} Ley Shards, have {}",
-            player_id,
+            player.telegram_user_id,
             TEN_PULL_COST_LEY_SHARDS,
-            player.ley_shards,
+            account.ley_shards,
         )
-        raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, player.ley_shards)
-    player.ley_shards -= TEN_PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, account.ley_shards)
+    account.ley_shards -= TEN_PULL_COST_LEY_SHARDS
 
     outcomes = [
-        _execute_single_pull(session, player_id, banner, rng, now) for _ in range(TEN_PULL_SIZE)
+        _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
+        for _ in range(TEN_PULL_SIZE)
     ]
     session.commit()
     rarity_counts = Counter(outcome.rarity for outcome in outcomes)
     logger.info(
         "10-pull: player={} banner={} -> {}",
-        player_id,
+        player.telegram_user_id,
         banner.type,
         dict(rarity_counts),
     )
