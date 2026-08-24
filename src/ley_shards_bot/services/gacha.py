@@ -255,11 +255,12 @@ def pull_single(
     *,
     rng: random.Random | None = None,
     now: datetime | None = None,
+    username: str | None = None,
 ) -> PullOutcome:
     rng = rng or random.Random()
     now = now or utc_now()
 
-    player = get_or_create_player(session, player_id)
+    player = get_or_create_player(session, player_id, username=username)
     if player.ley_shards < PULL_COST_LEY_SHARDS:
         logger.warning(
             "Pull rejected for {}: need {} Ley Shards, have {}",
@@ -292,6 +293,7 @@ def pull_ten(
     *,
     rng: random.Random | None = None,
     now: datetime | None = None,
+    username: str | None = None,
 ) -> list[PullOutcome]:
     """Ten pulls charged as one batch. No separate "at least one 4-star+"
     logic is needed here: the continuous pulls_since_last_4star pity
@@ -301,7 +303,7 @@ def pull_ten(
     rng = rng or random.Random()
     now = now or utc_now()
 
-    player = get_or_create_player(session, player_id)
+    player = get_or_create_player(session, player_id, username=username)
     if player.ley_shards < TEN_PULL_COST_LEY_SHARDS:
         logger.warning(
             "10-pull rejected for {}: need {} Ley Shards, have {}",

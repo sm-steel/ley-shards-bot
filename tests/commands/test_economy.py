@@ -45,13 +45,21 @@ def engine(monkeypatch):
     return engine
 
 
-def _make_update(*, user_id: int = 1, replied_user_id: int | None = None) -> MagicMock:
+def _make_update(
+    *,
+    user_id: int = 1,
+    username: str | None = None,
+    replied_user_id: int | None = None,
+    replied_username: str | None = None,
+) -> MagicMock:
     update = MagicMock()
     update.effective_user.id = user_id
+    update.effective_user.username = username
     message = MagicMock()
     message.reply_text = AsyncMock()
     if replied_user_id is not None:
         message.reply_to_message.from_user.id = replied_user_id
+        message.reply_to_message.from_user.username = replied_username
     else:
         message.reply_to_message = None
     update.effective_message = message
