@@ -6,7 +6,10 @@ boundary those follow.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
+from telegram import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -28,9 +31,55 @@ from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
 from ley_shards_bot.config import Config
 from ley_shards_bot.logging_config import setup_logging
 
+if TYPE_CHECKING:
+    from telegram import BotCommandScope
+
+# Shown to everyone via / autocomplete (BotCommandScopeDefault).
+PLAYER_COMMANDS = [
+    BotCommand("daily", "Claim your daily Ley Shards"),
+    BotCommand("pull", "Pull once on the gacha banner"),
+    BotCommand("pull10", "Pull ten times on the gacha banner"),
+    BotCommand("collection", "View your character collection"),
+]
+
+# Shown only to admins, on top of the player commands above — each admin
+# gets their own BotCommandScopeChat rather than these appearing in the
+# BotCommandScopeDefault menu everyone sees.
+ADMIN_COMMANDS = [
+    BotCommand("grant", "Grant Ley Shards to a player"),
+    BotCommand("revoke", "Deduct Ley Shards from a player"),
+    BotCommand("award_guess", "Award a correct-guess bonus"),
+]
+
+
+def _command_registrations(
+    admin_user_ids: frozenset[int],
+) -> list[tuple[BotCommandScope, list[BotCommand]]]:
+    """The (scope, commands) pairs to hand to `Bot.set_my_commands`, one
+    call per scope — see issue #15. Admins get PLAYER_COMMANDS too (they're
+    players as well), scoped to their own chat with the bot rather than
+    polluting the default menu everyone else sees."""
+    registrations: list[tuple[BotCommandScope, list[BotCommand]]] = [
+        (BotCommandScopeDefault(), PLAYER_COMMANDS)
+    ]
+    registrations.extend(
+        (BotCommandScopeChat(chat_id=admin_id), [*PLAYER_COMMANDS, *ADMIN_COMMANDS])
+        for admin_id in admin_user_ids
+    )
+    return registrations
+
+
+async def register_commands(application: Application) -> None:
+    """`post_init` hook: publishes the / autocomplete menu once at startup.
+    Runs after `Application.initialize()`, before polling starts."""
+    config: Config = application.bot_data["config"]
+    for scope, commands in _command_registrations(config.admin_user_ids):
+        await application.bot.set_my_commands(commands, scope=scope)
+    logger.info("Registered / autocomplete commands ({} scope(s))", len(config.admin_user_ids) + 1)
+
 
 def build_application(config: Config) -> Application:
-    builder = ApplicationBuilder().token(config.bot_token)
+    builder = ApplicationBuilder().token(config.bot_token).post_init(register_commands)
     if config.telegram_proxy_url:
         builder = builder.proxy(config.telegram_proxy_url).get_updates_proxy(
             config.telegram_proxy_url
