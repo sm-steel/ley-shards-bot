@@ -14,6 +14,7 @@ topics" section for why.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -27,6 +28,8 @@ from ley_shards_bot.services.players import find_player_by_username
 from ley_shards_bot.time_utils import game_day, utc_now
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session
     from telegram import Message
 
@@ -177,11 +180,30 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await message.reply_text(text)
 
 
-async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@dataclass(frozen=True)
+class _AmountCommandSpec:
+    """The three things that differ between `/grant` and `/revoke` —
+    bundled into one value (rather than three separate parameters) since
+    they're one cohesive concept: how this particular command variant
+    behaves. See issue #47."""
+
+    command: str  # "/grant" or "/revoke"
+    apply: Callable[..., int]  # economy.grant or economy.revoke
+    verb: str  # "Granted" or "Revoked", for the success reply
+
+
+async def _execute_amount_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, spec: _AmountCommandSpec
+) -> None:
+    """Shared implementation behind `/grant` and `/revoke` — an admin
+    command that resolves a target (#13), parses a Ley Shards amount, and
+    applies it via `spec.apply`."""
     message = update.effective_message
     if message is None:
         return
-    logger.debug("/grant from {}", update.effective_user.id if update.effective_user else None)
+    logger.debug(
+        "{} from {}", spec.command, update.effective_user.id if update.effective_user else None
+    )
     if not _is_admin(update, context):
         await message.reply_text("Admins only.")
         return
@@ -193,8 +215,8 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             session,
             context.args or [],
             reply_hint=(
-                "Reply to the target player's message with /grant <amount>, "
-                "or use /grant @username <amount>."
+                f"Reply to the target player's message with {spec.command} <amount>, "
+                f"or use {spec.command} @username <amount>."
             ),
         )
         if resolved is None:
@@ -203,57 +225,29 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         if not amount_args or not amount_args[0].lstrip("-").isdigit():
             await message.reply_text(
-                "Usage: reply to the player with /grant <amount>, or /grant @username <amount>"
+                f"Usage: reply to the player with {spec.command} <amount>, "
+                f"or {spec.command} @username <amount>"
             )
             return
         amount = int(amount_args[0])
 
         try:
-            new_balance = economy.grant(session, target_id, amount, username=capture_username)
+            new_balance = spec.apply(session, target_id, amount, username=capture_username)
         except ValueError as exc:
-            logger.debug("/grant rejected: {}", exc)
+            logger.debug("{} rejected: {}", spec.command, exc)
             await message.reply_text(str(exc))
             return
 
-    await message.reply_text(f"Granted {amount} Ley Shards (new balance: {new_balance}).")
+    await message.reply_text(f"{spec.verb} {amount} Ley Shards (new balance: {new_balance}).")
+
+
+_GRANT_SPEC = _AmountCommandSpec(command="/grant", apply=economy.grant, verb="Granted")
+_REVOKE_SPEC = _AmountCommandSpec(command="/revoke", apply=economy.revoke, verb="Revoked")
+
+
+async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _execute_amount_command(update, context, _GRANT_SPEC)
 
 
 async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
-    if message is None:
-        return
-    logger.debug("/revoke from {}", update.effective_user.id if update.effective_user else None)
-    if not _is_admin(update, context):
-        await message.reply_text("Admins only.")
-        return
-
-    with session_scope() as session:
-        resolved = await _resolve_target(
-            update,
-            message,
-            session,
-            context.args or [],
-            reply_hint=(
-                "Reply to the target player's message with /revoke <amount>, "
-                "or use /revoke @username <amount>."
-            ),
-        )
-        if resolved is None:
-            return
-        target_id, capture_username, amount_args = resolved
-
-        if not amount_args or not amount_args[0].lstrip("-").isdigit():
-            await message.reply_text(
-                "Usage: reply to the player with /revoke <amount>, or /revoke @username <amount>"
-            )
-            return
-        amount = int(amount_args[0])
-
-        try:
-            new_balance = economy.revoke(session, target_id, amount, username=capture_username)
-        except ValueError as exc:
-            logger.debug("/revoke rejected: {}", exc)
-            await message.reply_text(str(exc))
-            return
-
-    await message.reply_text(f"Revoked {amount} Ley Shards (new balance: {new_balance}).")
+    await _execute_amount_command(update, context, _REVOKE_SPEC)
