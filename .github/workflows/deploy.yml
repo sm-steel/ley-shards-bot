@@ -27,7 +27,7 @@ jobs:
         uses: qltysh/qlty-action/install@v1
 
       - name: Run pre-commit hooks
-        uses: pre-commit/action@v3.0.1
+        run: uv run pre-commit run --all-files
 
       - name: Run tests
         run: uv run pytest -q
