@@ -10,6 +10,8 @@ Handlers expect `context.bot_data["config"]` to hold the running Config
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -18,6 +20,10 @@ from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
 from ley_shards_bot.services.players import find_player_by_username
 from ley_shards_bot.time_utils import utc_now
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+    from telegram import Message
 
 
 def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -60,6 +66,37 @@ def _username_from_args(args: list[str]) -> str | None:
     if not args or not args[0].startswith("@"):
         return None
     return args[0][1:]
+
+
+async def _resolve_target(
+    update: Update,
+    message: Message,
+    session: Session,
+    args: list[str],
+    *,
+    reply_hint: str,
+) -> tuple[int, str | None, list[str]] | None:
+    """Resolve an admin command's target player, trying `@username` (via
+    the first arg) before falling back to reply-to-message targeting — see
+    issue #13. On success, returns `(target_id, username_to_capture,
+    remaining_args)`, where `remaining_args` has the leading `@username`
+    consumed if there was one (so callers parse e.g. an amount from it
+    instead of from `args` directly). On failure, sends a friendly reply
+    itself (unknown username, or no target at all) and returns None.
+    """
+    target_username = _username_from_args(args)
+    if target_username is not None:
+        target_player = find_player_by_username(session, target_username)
+        if target_player is None:
+            await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
+            return None
+        return target_player.telegram_user_id, target_player.username, args[1:]
+
+    target_id = _replied_to_user_id(update)
+    if target_id is None:
+        await message.reply_text(reply_hint)
+        return None
+    return target_id, _replied_to_username(update), args
 
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
@@ -106,24 +143,19 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await message.reply_text("Admins only.")
         return
 
-    target_username = _username_from_args(context.args or [])
-
     with session_scope() as session:
-        if target_username is not None:
-            target_player = find_player_by_username(session, target_username)
-            if target_player is None:
-                await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
-                return
-            target_id = target_player.telegram_user_id
-            capture_username = target_player.username
-        else:
-            target_id = _replied_to_user_id(update)
-            if target_id is None:
-                await message.reply_text(
-                    "Reply to the correct guess with /award_guess, or use /award_guess @username."
-                )
-                return
-            capture_username = _replied_to_username(update)
+        resolved = await _resolve_target(
+            update,
+            message,
+            session,
+            context.args or [],
+            reply_hint=(
+                "Reply to the correct guess with /award_guess, or use /award_guess @username."
+            ),
+        )
+        if resolved is None:
+            return
+        target_id, capture_username, _remaining_args = resolved
 
         result = economy.award_guess(
             session, target_id, today=utc_now().date(), username=capture_username
@@ -145,27 +177,20 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text("Admins only.")
         return
 
-    args = context.args or []
-    target_username = _username_from_args(args)
-    amount_args = args[1:] if target_username is not None else args
-
     with session_scope() as session:
-        if target_username is not None:
-            target_player = find_player_by_username(session, target_username)
-            if target_player is None:
-                await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
-                return
-            target_id = target_player.telegram_user_id
-            capture_username = target_player.username
-        else:
-            target_id = _replied_to_user_id(update)
-            if target_id is None:
-                await message.reply_text(
-                    "Reply to the target player's message with /grant <amount>, "
-                    "or use /grant @username <amount>."
-                )
-                return
-            capture_username = _replied_to_username(update)
+        resolved = await _resolve_target(
+            update,
+            message,
+            session,
+            context.args or [],
+            reply_hint=(
+                "Reply to the target player's message with /grant <amount>, "
+                "or use /grant @username <amount>."
+            ),
+        )
+        if resolved is None:
+            return
+        target_id, capture_username, amount_args = resolved
 
         if not amount_args or not amount_args[0].lstrip("-").isdigit():
             await message.reply_text(
@@ -182,3 +207,44 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
     await message.reply_text(f"Granted {amount} Ley Shards (new balance: {new_balance}).")
+
+
+async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+    logger.debug("/revoke from {}", update.effective_user.id if update.effective_user else None)
+    if not _is_admin(update, context):
+        await message.reply_text("Admins only.")
+        return
+
+    with session_scope() as session:
+        resolved = await _resolve_target(
+            update,
+            message,
+            session,
+            context.args or [],
+            reply_hint=(
+                "Reply to the target player's message with /revoke <amount>, "
+                "or use /revoke @username <amount>."
+            ),
+        )
+        if resolved is None:
+            return
+        target_id, capture_username, amount_args = resolved
+
+        if not amount_args or not amount_args[0].lstrip("-").isdigit():
+            await message.reply_text(
+                "Usage: reply to the player with /revoke <amount>, or /revoke @username <amount>"
+            )
+            return
+        amount = int(amount_args[0])
+
+        try:
+            new_balance = economy.revoke(session, target_id, amount, username=capture_username)
+        except ValueError as exc:
+            logger.debug("/revoke rejected: {}", exc)
+            await message.reply_text(str(exc))
+            return
+
+    await message.reply_text(f"Revoked {amount} Ley Shards (new balance: {new_balance}).")
