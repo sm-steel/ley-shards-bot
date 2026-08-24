@@ -118,7 +118,7 @@ erDiagram
 
 | Table | Status | Purpose |
 |---|---|---|
-| `players` | Implemented; grows columns | Telegram user id, Ley Shards balance, Echoes balance, `last_daily_claimed_at`, `last_trickle_date`. Phase 1.1 adds `standard_tickets`/`event_tickets`; Phase 1.2 adds `weapon_tickets` — see `MECHANICS.md`'s Currencies table. |
+| `players` | Implemented; grows columns | Telegram user id, `username` (opportunistically captured), Ley Shards balance, Echoes balance, `last_daily_claimed_at`, `last_trickle_date`. Phase 1.1 adds `standard_tickets`/`event_tickets`, `timezone` (nullable, self-reported — see #43), and `registered_at` (nullable — set once `/start` completes; distinct from row existence, since admin-targeted rows can exist unregistered, see "Registration gate" above); Phase 1.2 adds `weapon_tickets` — see `MECHANICS.md`'s Currencies table. |
 | `characters` | Implemented; grows columns | Name, series, image URL, `description` (Phase 1.1), tags (Phase 1.1, simple JSON/text), rarity (3★/4★/5★, admin-editable from Phase 1.2), `role`/`element` (Phase 1.2, enums), placeholder base stats (HP/ATK/DEF/SPD, admin-editable from Phase 1.2) — see `MECHANICS.md`'s Characters section. |
 | `weapons` | Planned (Phase 1.2) | Mirrors `characters`' shape but admin-authored, not AniList-sourced: name, image URL, rarity, `weapon_type` enum, placeholder base stats. |
 | `player_characters` | Implemented; reinterpreted | Ownership: `(player_id, character_id, copies_owned)`. `copies_owned` is now **constellation progress** (0–6, capped at 7 total copies), not a raw duplicate count — see `GACHA.md`'s "Duplicates" section for the pull-time logic and `MECHANICS.md` for what constellations are. |
@@ -222,6 +222,43 @@ From Phase 1.1, the interaction model flips:
   **both** DM and the group, same as today (never topic-scoped) — this
   phase adds explicit test coverage for both contexts rather than
   leaving it incidental.
+
+### Registration gate
+
+**A player must register (`/start`) before they can do anything else in
+the game — this is mandatory, not optional onboarding.** Today (Phase 1)
+a `players` row is created silently and implicitly, the first time
+*any* economy/gacha function happens to touch that `telegram_user_id`
+(`get_or_create_player()`, see `services/players.py`). From Phase 1.1,
+every player-initiated command instead requires the player to have
+completed `/start` first — `/daily`, `/pull`, `/pull10`, `/collection`,
+the first-message trickle, and any later player-facing command
+(`/banners`, `/buy_ticket`, `/set_timezone`, ...) all check this and
+reply telling the player to `/start` first if it hasn't happened yet,
+rather than silently creating a player and proceeding. `/start` is what
+captures timezone (see #43) and is where any other future
+onboarding-time question would be asked, once — not re-asked per
+command.
+
+This needs a real distinction that doesn't exist today: a `players` row
+existing is not the same thing as a player being *registered*.
+Row-without-registration must stay possible, because admin-initiated
+targeting already relies on it (issues #12/#13): replying to someone
+with `/grant` or `/award_guess` creates/credits their row even if
+they've never touched the bot themselves, and that has to keep working
+— an admin can still pre-grant currency to someone who hasn't run
+`/start` yet. So: add a nullable `players.registered_at: datetime`
+(`None` until `/start` completes), and gate only on that — not on row
+existence. Admin commands (`/grant`, `/revoke`, `/award_guess`) targeting
+another player never require the *target* to be registered; only the
+*caller* of a player-initiated command needs `registered_at is not
+None`.
+
+Open question for whoever picks up #43: does the passive trickle bonus
+(today, silent, fires on any group message) also require registration,
+or is it exempt as "not a deliberate action"? Leaning toward gating it
+too, for consistency (no player should accumulate Ley Shards before
+they've registered) — confirm this when the ticket is implemented.
 
 ## Roadmap (explicitly out of scope for Phase 1.1/1.2)
 
