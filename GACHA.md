@@ -49,7 +49,7 @@ one, falling back to direct Ley Shards otherwise; no extra prompt.
 | Banner | Lifetime | Pool | Rate-up |
 |---|---|---|---|
 | **Standard** | Permanent | Curated character pool (Phase 1.1) + standard-pool weapons (Phase 1.2) | None |
-| **Event (character)** | One active at a time | Standard character pool + one admin-picked rate-up character | Classic 50/50 |
+| **Event (character)** | One active at a time | Standard character pool + one admin-picked 5★ rate-up + two featured 4★ + two featured 3★ | Classic 50/50 (5★); elevated-chance featured pair (4★/3★, see below) |
 | **Event (weapon)** | Paired 1:1 with the active event-character banner, same lifetime | Weapons only (no characters) | Rate-up on the featured weapon(s), details TBD when Phase 1.2's weapon-banner ticket is picked up |
 
 Today (Phase 1), only the standard banner exists in practice — the engine
@@ -108,11 +108,16 @@ where it started*, ten sequential single pulls through the same engine
 already satisfy the guarantee on their own. Verified by simulation in
 `tests/services/test_gacha.py`.
 
-## Event banner: the 50/50
+## Event banner: rate-up mechanics
 
-On an event *character* banner, a 5★ pull is always a character (see the
-mixed-pool section below — 5★ event weapons simply aren't in this
-banner's pool). Which character is the classic coin flip:
+An event character banner has rate-up at every rarity it offers, not just
+5★ — three separate mechanics, one per tier.
+
+### 5★: the classic 50/50
+
+A 5★ pull on an event banner is always a character (see the mixed-pool
+section below — 5★ event weapons simply aren't in this banner's pool).
+Which character is the coin flip:
 
 - If the player's `guaranteed_rate_up` flag is set (they lost the 50/50
   last time), this 5★ is **always** the rate-up character, and the flag
@@ -120,6 +125,28 @@ banner's pool). Which character is the classic coin flip:
 - Otherwise, 50/50: rate-up character, or a random other 5★ character
   from the standard pool. Losing sets `guaranteed_rate_up` for the
   banner's *next* 5★.
+
+### 4★ and 3★: featured pairs
+
+Each event banner also has **two featured 4★ characters** and **two
+featured 3★ characters** picked by the admin alongside the 5★ rate-up —
+not a coin flip like the 5★, but an elevated *chance* stacked on top of
+the ordinary standard pool at that tier. When a roll lands on "character"
+at 4★ or 3★ (see the mixed-pool split below) on an event banner:
+
+- With an elevated combined probability (proposed default 50%, split
+  evenly — 25% each — between the two featured characters; exact number
+  tunable, decided when this ticket is picked up), the pull is one of
+  that tier's two featured characters.
+- Otherwise, it's a uniform pick from the rest of the standard pool at
+  that tier (the two featured characters excluded from that "rest" pool,
+  so they aren't double-weighted).
+
+No pity/guarantee interaction here — unlike the 5★ 50/50, there's no
+"lost last time, guaranteed next time" flag for 4★/3★ featured pulls,
+just a flat elevated draw chance every time. On the **standard** banner,
+none of this applies — every character at a given rarity is a uniform
+pick, no featured pair.
 
 ## The roll, step by step
 
@@ -140,7 +167,9 @@ flowchart TD
     B -->|Event character banner| EC{"Rarity tier?"}
     EC -->|"3-star or 4-star"| ED["Character/weapon weighted split<br/>(weapon-favored, tunable ratio)"]
     ED -->|weapon| EDW["Weapon from that rarity's pool"]
-    ED -->|character| EDC["Character from that rarity's pool"]
+    ED -->|character| EDF{"Elevated chance:<br/>featured pair?"}
+    EDF -->|"yes (~50%, tunable)"| EDFC["One of the two<br/>featured characters<br/>at that tier"]
+    EDF -->|no| EDRC["Uniform pick from the rest<br/>of the standard pool<br/>at that tier"]
     EC -->|5-star| EF["Character only<br/>(5-star event weapons excluded)"]
     EF --> EG{"guaranteed_rate_up set?"}
     EG -->|yes| EH["Rate-up character<br/>clear the flag"]
