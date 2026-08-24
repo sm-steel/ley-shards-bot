@@ -14,8 +14,9 @@ for how the system is built and `MECHANICS.md` for the game *entities*
 | Single/10-pull, standard banner, pity, event 50/50 | **Implemented** (Phase 1) |
 | Standard banner content curation (`banner_characters`) | Planned (Phase 1.1) |
 | Banner selection (`/banners`, `/pull <banner>`) | Planned (Phase 1.1) |
-| Banner tickets (pre-purchased pull currency) | Planned (Phase 1.1) |
+| Banner tickets — standard/event (pre-purchased pull currency) | Planned (Phase 1.1) |
 | Weapons, weapon banner, character/weapon mixed pool | Planned (Phase 1.2) |
+| Banner ticket — weapon | Planned (Phase 1.2) |
 
 ## Pull costs
 
@@ -25,19 +26,23 @@ for how the system is built and `MECHANICS.md` for the game *entities*
   ≥ one 4★-or-better among the ten. This guarantee needs no special
   batch logic — see "Why the 10-pull guarantee needs no extra code" below.
 
-### Banner tickets (planned, Phase 1.1)
+### Banner tickets (planned, Phase 1.1; weapon ticket adds in Phase 1.2)
 
 Players can pre-buy pull currency instead of always spending Ley Shards
-directly at pull time — mirrors Genshin's Fates. Two kinds, **not**
-interchangeable:
+directly at pull time — mirrors Genshin's Fates. Three kinds, **not**
+interchangeable — each pays for its own banner category only:
 
-- **Standard ticket** — pays for a standard-banner pull only.
-- **Event ticket** — pays for the current event-banner pull only.
+- **Standard ticket** — pays for a standard-banner pull only. (Phase 1.1)
+- **Event ticket** — pays for the current event-*character*-banner pull
+  only. (Phase 1.1)
+- **Weapon ticket** — pays for the paired event-*weapon*-banner pull only.
+  (Phase 1.2, since the weapon banner itself doesn't exist until then.)
 
-Both cost 160 Ley Shards each via `/buy_ticket <standard|event> <count>`
-— the same as a direct single pull, just paid in advance. `/pull`
-automatically spends a matching ticket if the player has one, falling
-back to direct Ley Shards otherwise; no extra prompt.
+All three cost 160 Ley Shards each via
+`/buy_ticket <standard|event|weapon> <count>` — the same as a direct
+single pull, just paid in advance. `/pull` automatically spends a
+matching ticket for whichever banner it's targeting if the player has
+one, falling back to direct Ley Shards otherwise; no extra prompt.
 
 ## Banners
 
