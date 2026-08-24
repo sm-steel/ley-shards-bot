@@ -129,22 +129,24 @@ flowchart TD
 
     B -->|Weapon banner| W["Always a weapon<br/>(no character pool on this banner)"]
 
-    B -->|Standard or event-character banner| C{"Rarity tier?"}
+    B -->|Standard banner| SC{"Rarity tier?"}
+    SC -->|"3-star or 4-star"| SD["Character/weapon weighted split<br/>(weapon-favored, tunable ratio)"]
+    SD -->|weapon| SDW["Weapon from that rarity's pool"]
+    SD -->|character| SDC["Character from that rarity's pool"]
+    SC -->|5-star| SE["Character/weapon weighted split<br/>(standard 5-star weapons included)"]
+    SE -->|weapon| SDW
+    SE -->|character| SDC
 
-    C -->|"3-star or 4-star"| D["Character/weapon weighted split<br/>(weapon-favored, tunable ratio)"]
-    D -->|weapon| DW["Weapon from that rarity's pool"]
-    D -->|character| DC["Character from that rarity's pool"]
-
-    C -->|5-star, standard banner| E["Character/weapon weighted split<br/>(standard 5-star weapons included)"]
-    E --> DW
-    E --> DC
-
-    C -->|5-star, event-character banner| F["Character only<br/>(5-star event weapons excluded)"]
-    F --> G{"guaranteed_rate_up set?"}
-    G -->|yes| H["Rate-up character<br/>clear the flag"]
-    G -->|no, 50/50| I{"Coin flip"}
-    I -->|win| H
-    I -->|lose| J["Random other 5-star character<br/>set guaranteed_rate_up"]
+    B -->|Event character banner| EC{"Rarity tier?"}
+    EC -->|"3-star or 4-star"| ED["Character/weapon weighted split<br/>(weapon-favored, tunable ratio)"]
+    ED -->|weapon| EDW["Weapon from that rarity's pool"]
+    ED -->|character| EDC["Character from that rarity's pool"]
+    EC -->|5-star| EF["Character only<br/>(5-star event weapons excluded)"]
+    EF --> EG{"guaranteed_rate_up set?"}
+    EG -->|yes| EH["Rate-up character<br/>clear the flag"]
+    EG -->|no, 50/50| EI{"Coin flip"}
+    EI -->|win| EH
+    EI -->|lose| EJ["Random other 5-star character<br/>set guaranteed_rate_up"]
 ```
 
 The 4★ pity guarantee can be satisfied by either a character or a weapon
