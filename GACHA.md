@@ -20,11 +20,15 @@ for how the system is built and `MECHANICS.md` for the game *entities*
 
 ## Pull costs
 
-- **Single pull:** 160 Ley Shards, or one matching banner ticket if the
-  player has one (tickets preferred automatically — see below).
-- **10-pull:** 1600 Ley Shards (no discount, just convenience), guaranteed
-  ≥ one 4★-or-better among the ten. This guarantee needs no special
-  batch logic — see "Why the 10-pull guarantee needs no extra code" below.
+- **Single pull:** one matching banner ticket if the player has one —
+  spent instantly, no prompt. Otherwise, 160 Ley Shards **with an explicit
+  confirmation step first** — see below.
+- **10-pull:** ten matching tickets, or a mix of tickets plus Ley Shards
+  for whatever the tickets don't cover (also confirmed first — see
+  below), 160 Ley Shards-equivalent per pull not covered by a ticket.
+  Guaranteed ≥ one 4★-or-better among the ten either way. This guarantee
+  needs no special batch logic — see "Why the 10-pull guarantee needs no
+  extra code" below.
 
 ### Banner tickets (planned, Phase 1.1; weapon ticket adds in Phase 1.2)
 
@@ -40,9 +44,23 @@ interchangeable — each pays for its own banner category only:
 
 All three cost 160 Ley Shards each via
 `/buy_ticket <standard|event|weapon> <count>` — the same as a direct
-single pull, just paid in advance. `/pull` automatically spends a
-matching ticket for whichever banner it's targeting if the player has
-one, falling back to direct Ley Shards otherwise; no extra prompt.
+single pull, just paid in advance.
+
+**Spending a ticket is instant; spending Ley Shards directly always asks
+first.** `/pull`/`/pull10` spend an existing matching ticket automatically
+— that Ley Shards commitment already happened when the ticket was
+bought, so there's nothing left to confirm. But whenever a pull would
+draw on Ley Shards *directly* — no matching ticket at all for a single
+pull, or not enough tickets to cover every pull in a 10-pull — the bot
+shows an explicit confirm/cancel prompt before spending anything,
+framed as converting that Ley Shards amount into the ticket(s) needed to
+complete the pull. Ley Shards are the general-purpose base currency and
+may pick up other uses later (a future Phase 2 system, say) — locking
+some of it into a single-banner-type ticket is a real choice for the
+player to make, not something to spend on their behalf silently. For a
+10-pull with some tickets already in hand, the prompt only covers the
+*shortfall* (e.g. 4 tickets owned + 6 needed = spend the 4 instantly,
+confirm converting Ley Shards for the other 6), not the whole batch.
 
 ## Banners
 
