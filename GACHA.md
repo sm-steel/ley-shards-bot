@@ -50,7 +50,22 @@ one, falling back to direct Ley Shards otherwise; no extra prompt.
 |---|---|---|---|
 | **Standard** | Permanent | Curated character pool (Phase 1.1) + standard-pool weapons (Phase 1.2) | None |
 | **Event (character)** | One active at a time | Standard character pool + one admin-picked 5★ rate-up + two featured 4★ + two featured 3★ | Classic 50/50 (5★); elevated-chance featured pair (4★/3★, see below) |
-| **Event (weapon)** | Paired 1:1 with the active event-character banner, same lifetime | Weapons only (no characters) | Rate-up on the featured weapon(s), details TBD when Phase 1.2's weapon-banner ticket is picked up |
+| **Event (weapon)** | Paired 1:1 with the active event-character banner, same lifetime | Weapons only (no characters) + rate-up 5★ weapon(s) + two featured 4★ + two featured 3★ | Rate-up on the featured 5★ weapon(s), details TBD when Phase 1.2's weapon-banner ticket is picked up; elevated-chance featured pair (4★/3★, see below) |
+
+**Banners are reusable — they're built to be rerun, not just recreated.**
+An admin's curation work (which character is 5★ rate-up, which four are
+the featured 4★/3★ pairs — same for a weapon banner) is a **banner
+definition**, saved independently from any specific time window it's
+live. Ending a banner doesn't discard that curation: rerunning it later
+reuses the exact same definition, no re-picking characters from scratch.
+An event character banner and its paired event weapon banner are linked
+at the *definition* level too, so rerunning one is meant to bring its
+paired counterpart back with it, not leave it behind. (Schema-level
+detail — separate "banner definition" vs. "banner run" tables, and how
+the pairing is represented — lives in `ARCHITECTURE.md`, since this is a
+data-modeling concern more than a pull-mechanics one; noted here because
+it directly affects what a rerun means for players: none of your
+context about "that banner had X and Y featured" ever goes stale.)
 
 Today (Phase 1), only the standard banner exists in practice — the engine
 already supports an event banner's rate-up/50/50 mechanics, but nothing
@@ -110,14 +125,15 @@ already satisfy the guarantee on their own. Verified by simulation in
 
 ## Event banner: rate-up mechanics
 
-An event character banner has rate-up at every rarity it offers, not just
-5★ — three separate mechanics, one per tier.
+Every event banner — character *and* weapon — has rate-up at every rarity
+it offers, not just 5★. The two banners follow the same shape; only the
+5★ mechanic differs between them.
 
-### 5★: the classic 50/50
+### Event character banner
 
-A 5★ pull on an event banner is always a character (see the mixed-pool
-section below — 5★ event weapons simply aren't in this banner's pool).
-Which character is the coin flip:
+**5★ — the classic 50/50.** A 5★ pull here is always a character (see
+the mixed-pool section below — 5★ event weapons simply aren't in this
+banner's pool). Which character is the coin flip:
 
 - If the player's `guaranteed_rate_up` flag is set (they lost the 50/50
   last time), this 5★ is **always** the rate-up character, and the flag
@@ -126,13 +142,11 @@ Which character is the coin flip:
   from the standard pool. Losing sets `guaranteed_rate_up` for the
   banner's *next* 5★.
 
-### 4★ and 3★: featured pairs
-
-Each event banner also has **two featured 4★ characters** and **two
-featured 3★ characters** picked by the admin alongside the 5★ rate-up —
-not a coin flip like the 5★, but an elevated *chance* stacked on top of
-the ordinary standard pool at that tier. When a roll lands on "character"
-at 4★ or 3★ (see the mixed-pool split below) on an event banner:
+**4★ and 3★ — featured pairs.** Two featured 4★ characters and two
+featured 3★ characters, picked by the admin alongside the 5★ rate-up —
+not a coin flip, an elevated *chance* stacked on top of the ordinary
+standard pool at that tier. When a roll lands on "character" at 4★ or 3★
+(see the mixed-pool split below):
 
 - With an elevated combined probability (proposed default 50%, split
   evenly — 25% each — between the two featured characters; exact number
@@ -142,11 +156,28 @@ at 4★ or 3★ (see the mixed-pool split below) on an event banner:
   that tier (the two featured characters excluded from that "rest" pool,
   so they aren't double-weighted).
 
-No pity/guarantee interaction here — unlike the 5★ 50/50, there's no
-"lost last time, guaranteed next time" flag for 4★/3★ featured pulls,
-just a flat elevated draw chance every time. On the **standard** banner,
-none of this applies — every character at a given rarity is a uniform
-pick, no featured pair.
+No pity/guarantee interaction for the featured pairs — unlike the 5★
+50/50, there's no "lost last time, guaranteed next time" flag, just a
+flat elevated draw chance every time.
+
+### Event weapon banner
+
+**5★ — rate-up weapon(s).** Exact mechanic (a straight rate-up vs. a
+Genshin-"epitomized path"-style pick-your-featured-weapon-after-N-losses)
+is still an open question — see the mixed-pool section's note — decided
+when that ticket is picked up.
+
+**4★ and 3★ — featured pairs.** Same shape as the character banner: two
+featured 4★ weapons and two featured 3★ weapons with an elevated chance
+over the rest of the standard weapon pool at that tier, no guarantee
+flag. Mirrors the character banner's featured-pair mechanic exactly, just
+for weapons.
+
+### Standard banner
+
+None of the above applies — every character or weapon at a given rarity
+is a uniform pick from the whole pool, no featured/rate-up concept at
+all. Only event banners have rate-up, at any tier.
 
 ## The roll, step by step
 
