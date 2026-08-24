@@ -50,7 +50,7 @@ one, falling back to direct Ley Shards otherwise; no extra prompt.
 |---|---|---|---|
 | **Standard** | Permanent | Curated character pool (Phase 1.1) + standard-pool weapons (Phase 1.2) | None |
 | **Event (character)** | One active at a time | Standard character pool + one admin-picked 5★ rate-up + two featured 4★ + two featured 3★ | Classic 50/50 (5★); elevated-chance featured pair (4★/3★, see below) |
-| **Event (weapon)** | Paired 1:1 with the active event-character banner, same lifetime | Weapons only (no characters) + rate-up 5★ weapon(s) + two featured 4★ + two featured 3★ | Rate-up on the featured 5★ weapon(s), details TBD when Phase 1.2's weapon-banner ticket is picked up; elevated-chance featured pair (4★/3★, see below) |
+| **Event (weapon)** | Paired 1:1 with the active event-character banner, same lifetime | Weapons only (no characters) + one 5★ rate-up weapon + two featured 4★ + two featured 3★ | Classic 50/50 (5★, same shape as the character banner); elevated-chance featured pair (4★/3★, see below) |
 
 **Banners are reusable — they're built to be rerun, not just recreated.**
 An admin's curation work (which character is 5★ rate-up, which four are
@@ -162,16 +162,29 @@ flat elevated draw chance every time.
 
 ### Event weapon banner
 
-**5★ — rate-up weapon(s).** Exact mechanic (a straight rate-up vs. a
-Genshin-"epitomized path"-style pick-your-featured-weapon-after-N-losses)
-is still an open question — see the mixed-pool section's note — decided
-when that ticket is picked up.
+Exactly the character banner's shape, weapons instead of characters —
+same 50/50-with-guarantee at 5★, same featured pairs at 4★/3★, same
+`guaranteed_rate_up` flag and pity semantics, tracked via `pity_state`
+for `BannerType.WEAPON` the same way the character banner uses
+`BannerType.EVENT`. No epitomized-path-style pick-your-own mechanic —
+that option's dropped in favor of reusing the exact character-banner
+logic wholesale.
+
+**5★ — the classic 50/50.** A 5★ pull here is always a weapon (this
+banner has no character pool at all):
+
+- If the player's `guaranteed_rate_up` flag is set (they lost the 50/50
+  last time, on *this* banner type), this 5★ is **always** the rate-up
+  weapon, and the flag clears.
+- Otherwise, 50/50: rate-up weapon, or a random other 5★ weapon from the
+  **standard** pool (the same standard 5★ weapons that also appear on
+  the standard banner — see the Banners table). Losing sets
+  `guaranteed_rate_up` for the banner's *next* 5★.
 
 **4★ and 3★ — featured pairs.** Same shape as the character banner: two
 featured 4★ weapons and two featured 3★ weapons with an elevated chance
 over the rest of the standard weapon pool at that tier, no guarantee
-flag. Mirrors the character banner's featured-pair mechanic exactly, just
-for weapons.
+flag.
 
 ### Standard banner
 
@@ -185,7 +198,15 @@ all. Only event banners have rate-up, at any tier.
 flowchart TD
     A["Pity-aware rarity roll<br/>(5-star / 4-star / 3-star)"] --> B{"Which banner?"}
 
-    B -->|Weapon banner| W["Always a weapon<br/>(no character pool on this banner)"]
+    B -->|Weapon banner| WC{"Rarity tier?"}
+    WC -->|"3-star or 4-star"| WD{"Elevated chance:<br/>featured pair?"}
+    WD -->|"yes (~50%, tunable)"| WDF["One of the two<br/>featured weapons<br/>at that tier"]
+    WD -->|no| WDR["Uniform pick from the rest<br/>of the standard weapon pool<br/>at that tier"]
+    WC -->|5-star| WF{"guaranteed_rate_up set?"}
+    WF -->|yes| WH["Rate-up weapon<br/>clear the flag"]
+    WF -->|no, 50/50| WI{"Coin flip"}
+    WI -->|win| WH
+    WI -->|lose| WJ["Random other 5-star weapon<br/>from the standard pool<br/>set guaranteed_rate_up"]
 
     B -->|Standard banner| SC{"Rarity tier?"}
     SC -->|"3-star or 4-star"| SD["Character/weapon weighted split<br/>(weapon-favored, tunable ratio)"]
@@ -209,10 +230,12 @@ flowchart TD
     EI -->|lose| EJ["Random other 5-star character<br/>set guaranteed_rate_up"]
 ```
 
-The 4★ pity guarantee can be satisfied by either a character or a weapon
-(matches real Genshin — no separate character/weapon 4★ pity to track).
-The 5★ guarantee is always a character on a character banner — trivially
-true, since 5★ event weapons aren't in that banner's pool to begin with.
+The 4★ pity guarantee (on standard/event-character banners) can be
+satisfied by either a character or a weapon (matches real Genshin — no
+separate character/weapon 4★ pity to track). The 5★ guarantee is always
+a character on a character banner and always a weapon on the weapon
+banner — trivially true in both cases, since each banner's pool only
+ever contains the one or the other at 5★.
 
 ## Character/weapon mixed pool (planned, Phase 1.2)
 
