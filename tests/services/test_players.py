@@ -1,6 +1,7 @@
 """Tests for get_or_create_player's username capture (issue #12): should
 opportunistically set/refresh players.username whenever a caller has one to
-offer, and leave it alone otherwise.
+offer, and leave it alone otherwise. Also find_player_by_username (issue
+#13), the lookup that makes @username-based admin targeting possible.
 """
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from ley_shards_bot.models import Base, Player
-from ley_shards_bot.services.players import get_or_create_player
+from ley_shards_bot.services.players import find_player_by_username, get_or_create_player
 
 
 @pytest.fixture
@@ -53,3 +54,28 @@ class TestGetOrCreatePlayer:
         stored = session.get(Player, 1)
         assert stored is not None
         assert stored.username == "aleksey"
+
+
+class TestFindPlayerByUsername:
+    def test_finds_existing_player_by_exact_case(self, session):
+        get_or_create_player(session, 1, username="aleksey")
+        session.commit()
+
+        found = find_player_by_username(session, "aleksey")
+
+        assert found is not None
+        assert found.telegram_user_id == 1
+
+    def test_finds_existing_player_case_insensitively(self, session):
+        get_or_create_player(session, 1, username="Aleksey")
+        session.commit()
+
+        found = find_player_by_username(session, "aleksey")
+
+        assert found is not None
+        assert found.telegram_user_id == 1
+
+    def test_returns_none_for_unknown_username(self, session):
+        found = find_player_by_username(session, "nobody")
+
+        assert found is None

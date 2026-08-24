@@ -16,6 +16,7 @@ from telegram.ext import ContextTypes
 
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
+from ley_shards_bot.services.players import find_player_by_username
 from ley_shards_bot.time_utils import utc_now
 
 
@@ -49,6 +50,16 @@ def _replied_to_username(update: Update) -> str | None:
         return None
     replied_user = message.reply_to_message.from_user
     return replied_user.username if replied_user is not None else None
+
+
+def _username_from_args(args: list[str]) -> str | None:
+    """The @username (without the @) an admin command was targeted at via
+    its first argument, e.g. `/grant @aleksey 500` -> "aleksey". None if
+    there are no args or the first one isn't an @username — in which case
+    the caller falls back to reply-based targeting. See issue #13."""
+    if not args or not args[0].startswith("@"):
+        return None
+    return args[0][1:]
 
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
@@ -95,14 +106,27 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await message.reply_text("Admins only.")
         return
 
-    target_id = _replied_to_user_id(update)
-    if target_id is None:
-        await message.reply_text("Reply to the correct guess with /award_guess.")
-        return
+    target_username = _username_from_args(context.args or [])
 
     with session_scope() as session:
+        if target_username is not None:
+            target_player = find_player_by_username(session, target_username)
+            if target_player is None:
+                await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
+                return
+            target_id = target_player.telegram_user_id
+            capture_username = target_player.username
+        else:
+            target_id = _replied_to_user_id(update)
+            if target_id is None:
+                await message.reply_text(
+                    "Reply to the correct guess with /award_guess, or use /award_guess @username."
+                )
+                return
+            capture_username = _replied_to_username(update)
+
         result = economy.award_guess(
-            session, target_id, today=utc_now().date(), username=_replied_to_username(update)
+            session, target_id, today=utc_now().date(), username=capture_username
         )
 
     if result.granted:
@@ -121,22 +145,37 @@ async def grant_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text("Admins only.")
         return
 
-    target_id = _replied_to_user_id(update)
-    if target_id is None:
-        await message.reply_text("Reply to the target player's message with /grant <amount>.")
-        return
-
     args = context.args or []
-    if not args or not args[0].lstrip("-").isdigit():
-        await message.reply_text("Usage: reply to the player with /grant <amount>")
-        return
+    target_username = _username_from_args(args)
+    amount_args = args[1:] if target_username is not None else args
 
-    amount = int(args[0])
     with session_scope() as session:
-        try:
-            new_balance = economy.grant(
-                session, target_id, amount, username=_replied_to_username(update)
+        if target_username is not None:
+            target_player = find_player_by_username(session, target_username)
+            if target_player is None:
+                await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
+                return
+            target_id = target_player.telegram_user_id
+            capture_username = target_player.username
+        else:
+            target_id = _replied_to_user_id(update)
+            if target_id is None:
+                await message.reply_text(
+                    "Reply to the target player's message with /grant <amount>, "
+                    "or use /grant @username <amount>."
+                )
+                return
+            capture_username = _replied_to_username(update)
+
+        if not amount_args or not amount_args[0].lstrip("-").isdigit():
+            await message.reply_text(
+                "Usage: reply to the player with /grant <amount>, or /grant @username <amount>"
             )
+            return
+        amount = int(amount_args[0])
+
+        try:
+            new_balance = economy.grant(session, target_id, amount, username=capture_username)
         except ValueError as exc:
             logger.debug("/grant rejected: {}", exc)
             await message.reply_text(str(exc))

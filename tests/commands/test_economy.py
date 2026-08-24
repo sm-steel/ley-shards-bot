@@ -66,6 +66,12 @@ def _make_update(
     return update
 
 
+def _seed_player(engine, telegram_user_id: int, username: str) -> None:
+    with Session(engine) as session:
+        session.add(Player(telegram_user_id=telegram_user_id, username=username))
+        session.commit()
+
+
 def _make_context(*, admin_ids: frozenset[int] = frozenset(), args: list[str] | None = None):
     context = MagicMock()
     context.bot_data = {"config": SimpleNamespace(admin_user_ids=admin_ids)}
@@ -163,6 +169,28 @@ class TestAwardGuessCommand:
         (text,), _ = final.effective_message.reply_text.call_args
         assert "limit" in text.lower()
 
+    async def test_admin_awards_by_username(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey")
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@aleksey"])
+
+        await economy_commands.award_guess_command(update, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 15
+
+    async def test_unknown_username_reports_friendly_error(self, engine):
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@nobody"])
+
+        await economy_commands.award_guess_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "haven't seen" in text.lower()
+        assert "@nobody" in text
+
 
 class TestGrantCommand:
     async def test_non_admin_is_rejected(self, engine):
@@ -193,3 +221,35 @@ class TestGrantCommand:
             player = session.get(Player, 5)
             assert player is not None
             assert player.ley_shards == 250
+
+    async def test_admin_grants_by_username(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey")
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@aleksey", "250"])
+
+        await economy_commands.grant_command(update, context)
+
+        with Session(engine) as session:
+            player = session.get(Player, 5)
+            assert player is not None
+            assert player.ley_shards == 250
+
+    async def test_unknown_username_reports_friendly_error(self, engine):
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@nobody", "250"])
+
+        await economy_commands.grant_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "haven't seen" in text.lower()
+        assert "@nobody" in text
+
+    async def test_username_targeting_missing_amount_reports_usage(self, engine):
+        _seed_player(engine, telegram_user_id=5, username="aleksey")
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset({1}), args=["@aleksey"])
+
+        await economy_commands.grant_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "usage" in text.lower()
