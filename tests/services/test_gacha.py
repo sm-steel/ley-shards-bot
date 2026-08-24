@@ -31,6 +31,7 @@ from ley_shards_bot.services.gacha import (
     TEN_PULL_COST_LEY_SHARDS,
     TEN_PULL_SIZE,
     InsufficientLeyShardsError,
+    PlayerRef,
     five_star_probability,
     get_or_create_standard_banner,
     next_pity_counts,
@@ -234,7 +235,7 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, 1, banner, rng=random.Random(SEED))
+        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         player = session.get(Player, 1)
         assert player is not None
@@ -245,7 +246,7 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, 1, banner, rng=random.Random(SEED), username="aleksey")
+        pull_single(session, PlayerRef(1, username="aleksey"), banner, rng=random.Random(SEED))
 
         assert session.get(Player, 1).username == "aleksey"
 
@@ -256,7 +257,7 @@ class TestPullSingle:
         banner = get_or_create_standard_banner(session)
 
         with pytest.raises(InsufficientLeyShardsError):
-            pull_single(session, 1, banner, rng=random.Random(SEED))
+            pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         # Balance and pity must be untouched by a rejected pull.
         player = session.get(Player, 1)
@@ -268,7 +269,7 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        outcome = pull_single(session, 1, banner, rng=random.Random(SEED))
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         ownership = session.get(PlayerCharacter, (1, outcome.character.anilist_id))
         assert ownership is not None
@@ -286,8 +287,8 @@ class TestPullSingle:
         # 3-star both times isn't guaranteed by seed alone, so instead
         # drive it directly through the pity state to keep this fast and
         # deterministic: bottom rarity is overwhelmingly likely at pity 0.
-        first = pull_single(session, 1, banner, rng=random.Random(1))
-        second = pull_single(session, 1, banner, rng=random.Random(1))
+        first = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
+        second = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
 
         assert first.character.anilist_id == second.character.anilist_id
         assert second.is_new is False
@@ -301,8 +302,8 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, 1, banner, rng=random.Random(SEED))
-        pull_single(session, 1, banner, rng=random.Random(SEED))
+        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         pity = session.get(PityState, (1, BannerType.STANDARD))
         assert pity is not None
@@ -313,7 +314,7 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, 1, banner, rng=random.Random(SEED))
+        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         from ley_shards_bot.models import Pull
 
@@ -326,7 +327,7 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_ten(session, 1, banner, rng=random.Random(SEED))
+        pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         player = session.get(Player, 1)
         assert player is not None
@@ -337,7 +338,7 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        outcomes = pull_ten(session, 1, banner, rng=random.Random(SEED))
+        outcomes = pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         assert len(outcomes) == TEN_PULL_SIZE
 
@@ -346,7 +347,7 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_ten(session, 1, banner, rng=random.Random(SEED), username="aleksey")
+        pull_ten(session, PlayerRef(1, username="aleksey"), banner, rng=random.Random(SEED))
 
         assert session.get(Player, 1).username == "aleksey"
 
@@ -359,7 +360,7 @@ class TestPullTen:
         for seed in range(50):
             session.add(Player(telegram_user_id=100 + seed, ley_shards=100_000))
             session.commit()
-            outcomes = pull_ten(session, 100 + seed, banner, rng=random.Random(seed))
+            outcomes = pull_ten(session, PlayerRef(100 + seed), banner, rng=random.Random(seed))
             assert any(o.rarity in (Rarity.FOUR_STAR, Rarity.FIVE_STAR) for o in outcomes)
 
     def test_rejects_insufficient_balance_without_charging_partial_cost(self, session):
@@ -369,7 +370,7 @@ class TestPullTen:
         banner = get_or_create_standard_banner(session)
 
         with pytest.raises(InsufficientLeyShardsError):
-            pull_ten(session, 1, banner, rng=random.Random(SEED))
+            pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         player = session.get(Player, 1)
         assert player is not None
@@ -396,7 +397,7 @@ class TestEventBannerRateUp:
         session.add(pity)
         session.commit()
 
-        outcome = pull_single(session, 1, banner, rng=random.Random(SEED))
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
 
         assert outcome.rarity == Rarity.FIVE_STAR
         assert outcome.character.anilist_id == 5
@@ -420,7 +421,7 @@ class TestEventBannerRateUp:
         session.add(pity)
         session.commit()
 
-        outcome = pull_single(session, 1, banner, rng=random.Random(2))
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(2))
 
         refreshed = session.get(PityState, (1, BannerType.EVENT))
         assert refreshed is not None

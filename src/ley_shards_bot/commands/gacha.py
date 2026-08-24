@@ -9,6 +9,8 @@ topics" section and issue #17.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, TypeVar
+
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -17,6 +19,14 @@ from ley_shards_bot.commands.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.models import Rarity
 from ley_shards_bot.services import gacha
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.orm import Session
+    from telegram import Message
+
+_PullResultT = TypeVar("_PullResultT")
 
 _RARITY_STARS = {
     Rarity.THREE_STAR: "★★★",
@@ -58,6 +68,32 @@ def _format_single_caption(outcome: gacha.PullOutcome) -> str:
     return "\n".join(lines)
 
 
+async def _attempt_pull(
+    session: Session,
+    message: Message,
+    player: gacha.PlayerRef,
+    pull_fn: Callable[..., _PullResultT],
+) -> _PullResultT | None:
+    """Shared `/pull`/`/pull10` flow: resolve the standard banner, attempt
+    the pull via `pull_fn` (`gacha.pull_single`/`gacha.pull_ten` — both
+    take `(session, player, banner)`), and reply with a friendly message
+    on the two known failure modes. Returns `None` (having already
+    replied) on failure, or the pull result on success — the caller still
+    owns formatting/sending the success reply, since that differs between
+    a single pull and a 10-pull."""
+    banner = gacha.get_or_create_standard_banner(session)
+    try:
+        return pull_fn(session, player, banner)
+    except gacha.InsufficientLeyShardsError as exc:
+        await message.reply_text(
+            f"Not enough Ley Shards \U0001f48e — need {exc.required}, have {exc.available}."
+        )
+        return None
+    except gacha.EmptyRarityPoolError:
+        await message.reply_text("The roster is empty — ask an admin to run the AniList ingestion.")
+        return None
+
+
 async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
     message = update.effective_message
     user = update.effective_user
@@ -69,19 +105,10 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await message.reply_text(NOT_IN_DM_MESSAGE)
         return
 
+    player = gacha.PlayerRef(user.id, username=user.username)
     with session_scope() as session:
-        banner = gacha.get_or_create_standard_banner(session)
-        try:
-            outcome = gacha.pull_single(session, user.id, banner, username=user.username)
-        except gacha.InsufficientLeyShardsError as exc:
-            await message.reply_text(
-                f"Not enough Ley Shards \U0001f48e — need {exc.required}, have {exc.available}."
-            )
-            return
-        except gacha.EmptyRarityPoolError:
-            await message.reply_text(
-                "The roster is empty — ask an admin to run the AniList ingestion."
-            )
+        outcome = await _attempt_pull(session, message, player, gacha.pull_single)
+        if outcome is None:
             return
 
     await message.reply_photo(
@@ -100,19 +127,10 @@ async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await message.reply_text(NOT_IN_DM_MESSAGE)
         return
 
+    player = gacha.PlayerRef(user.id, username=user.username)
     with session_scope() as session:
-        banner = gacha.get_or_create_standard_banner(session)
-        try:
-            outcomes = gacha.pull_ten(session, user.id, banner, username=user.username)
-        except gacha.InsufficientLeyShardsError as exc:
-            await message.reply_text(
-                f"Not enough Ley Shards \U0001f48e — need {exc.required}, have {exc.available}."
-            )
-            return
-        except gacha.EmptyRarityPoolError:
-            await message.reply_text(
-                "The roster is empty — ask an admin to run the AniList ingestion."
-            )
+        outcomes = await _attempt_pull(session, message, player, gacha.pull_ten)
+        if outcomes is None:
             return
 
     summary = "\n".join(_format_outcome_line(outcome) for outcome in outcomes)
