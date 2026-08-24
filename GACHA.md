@@ -75,7 +75,9 @@ doesn't exist until Phase 1.2.
 ## Pity
 
 Genshin-shaped, tracked per player per **banner type** (not per specific
-banner instance).
+banner instance). The weapon banner has its own, shorter thresholds —
+see below — everything else (standard and event-character banners)
+shares these numbers:
 
 - **5★:** base rate 0.6%. Soft pity starts ramping at pull 74 (+6
   percentage points per pull past that), hard pity (guaranteed) at pull
@@ -113,6 +115,29 @@ xychart-beta
 
 Flat at the base rate through pull 73, then the soft-pity ramp kicks in at
 74, reaching the pull-90 hard-pity wall.
+
+### Weapon banner pity: shorter thresholds, same shape
+
+Same base rate (0.6%) and the same ramp *mechanic*, but the weapon
+banner's numbers are deliberately tighter — soft pity starts ramping at
+pull **30**, hard pity (guaranteed) at pull **40**:
+
+```mermaid
+xychart-beta
+    title "5-star probability vs. pulls since last 5-star (weapon banner)"
+    x-axis [1, 10, 20, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+    y-axis "Probability" 0 --> 1
+    line [0.006, 0.006, 0.006, 0.006, 0.102, 0.198, 0.294, 0.39, 0.486, 0.582, 0.678, 0.774, 0.87, 0.966, 1.0]
+```
+
+Flat at the base rate through pull 29, then the soft-pity ramp kicks in
+at 30, reaching the pull-40 hard-pity wall — same proportional shape as
+the character/standard chart above (the ramp reaches ~96.6% by the pull
+before hard pity, same as that one does at pull 89), just compressed
+into a much shorter run, per the "weapon banner should be easier to
+pull" decision. Exact numbers (30/40, and the base rate) are tunable
+constants like everything else here, decided when that ticket is picked
+up.
 
 ### Why the 10-pull guarantee needs no extra code
 
