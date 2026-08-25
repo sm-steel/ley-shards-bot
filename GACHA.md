@@ -14,9 +14,14 @@ for how the system is built and `MECHANICS.md` for the game *entities*
 | Single/10-pull, standard banner, pity, event 50/50 | **Implemented** (Phase 1) |
 | Standard banner content curation (`banner_characters`) | Planned (Phase 1.1) |
 | Banner selection (`/banners`, `/pull <banner>`) | Planned (Phase 1.1) |
-| Banner tickets — standard/event (pre-purchased pull currency) | Planned (Phase 1.1) |
+| Banner tickets — standard/event (pre-purchased pull currency) | **Implemented*** (Phase 1.1) |
 | Weapons, weapon banner, character/weapon mixed pool | Planned (Phase 1.2) |
 | Banner ticket — weapon | Planned (Phase 1.2) |
+
+\* `/pull`/`/pull10`'s automatic ticket-spend only checks the standard
+ticket today, since both commands always operate on the standard
+banner until #32 adds banner selection. Event tickets are purchasable
+via `/buy_ticket` but nothing spends them yet.
 
 ## Pull costs
 
@@ -47,8 +52,7 @@ All three cost 160 Ley Shards each via
 single pull, just paid in advance.
 
 **Spending a ticket is instant; spending Ley Shards directly always asks
-first.** `/pull`/`/pull10` spend an existing matching ticket automatically
-— that Ley Shards commitment already happened when the ticket was
+first.** `/pull`/`/pull10` spend an existing matching ticket automatically (today, that's always the standard ticket — see the Status table's footnote above) — that Ley Shards commitment already happened when the ticket was
 bought, so there's nothing left to confirm. But whenever a pull would
 draw on Ley Shards *directly* — no matching ticket at all for a single
 pull, or not enough tickets to cover every pull in a 10-pull — the bot
