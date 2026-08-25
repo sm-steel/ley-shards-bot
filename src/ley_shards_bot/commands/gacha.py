@@ -4,7 +4,9 @@ Thin by design (see CLAUDE.md): parse the Update, call services/gacha.py,
 format the reply. No pity/rarity/economy rules live here.
 
 DM-scoped, not group-topic-scoped — see ARCHITECTURE.md's "Commands &
-topics" section and issue #17.
+topics" section and issue #17. A 4★+ pull also gets a best-effort public
+announcement in the group's 🎰 Gacha topic (issue #18) on top of the DM
+result — see `_announce_rare_pull`.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.orm import Session
-    from telegram import Message
+    from telegram import Message, User
 
 _PullResultT = TypeVar("_PullResultT")
 
@@ -68,6 +70,33 @@ def _format_single_caption(outcome: gacha.PullOutcome) -> str:
     return "\n".join(lines)
 
 
+async def _announce_rare_pull(
+    context: ContextTypes.DEFAULT_TYPE, user: User, outcome: gacha.PullOutcome
+) -> None:
+    """Post a celebratory public message into the group's 🎰 Gacha topic
+    for a 4★+ pull, on top of — not instead of — the private DM result.
+    Best-effort: a failure here (bot not in the group, topic gone, ...)
+    must never take down the DM reply that already succeeded."""
+    if outcome.rarity not in _HIGHLIGHT_RARITIES:
+        return
+    try:
+        config = context.bot_data["config"]
+        text = (
+            f"🎉 {user.first_name} just pulled a "
+            f"{_RARITY_STARS[outcome.rarity]} {outcome.character.name}!"
+        )
+        await context.bot.send_message(
+            chat_id=config.group_chat_id, message_thread_id=config.gacha_topic_id, text=text
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to post rare-pull announcement for player={} rarity={}: {}",
+            user.id,
+            outcome.rarity,
+            exc,
+        )
+
+
 async def _attempt_pull(
     session: Session,
     message: Message,
@@ -94,7 +123,7 @@ async def _attempt_pull(
         return None
 
 
-async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
+async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:
@@ -114,9 +143,10 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await message.reply_photo(
         photo=outcome.character.image_url, caption=_format_single_caption(outcome)
     )
+    await _announce_rare_pull(context, user, outcome)
 
 
-async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  # noqa: ARG001
+async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:
@@ -141,3 +171,4 @@ async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await message.reply_photo(
                 photo=outcome.character.image_url, caption=_format_single_caption(outcome)
             )
+            await _announce_rare_pull(context, user, outcome)
