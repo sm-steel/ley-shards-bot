@@ -4,10 +4,12 @@ name: Deploy
 # so a fork PR can't reach this workflow's secrets. Re-runs checks.yml's
 # and tests.yml's steps itself as a gate (see CLAUDE.md/the CI plan for
 # why this isn't wired as a cross-workflow `needs:` — not supported
-# across separate workflow files).
+# across separate workflow files). Doc-only merges skip this too — no
+# app code changed, nothing to redeploy.
 on:
   push:
     branches: [master]
+    paths-ignore: ["**.md", "docs/**"]
 
 jobs:
   verify:
