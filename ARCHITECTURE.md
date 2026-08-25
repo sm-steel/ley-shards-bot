@@ -67,23 +67,50 @@ Telegram  ◄── proxy ──────────────┼──┤
 ## Component boundaries
 
 ```
-commands/  →  services/  →  models/
-(Telegram)    (game rules)   (persistence)
-                    ▲
-                    │
-                  api/  (Phase 1.1, FastAPI — same services/models/,
-                         different front door)
+commands/            →  services/           →  models/
+commands/helpers/       (game rules)            (persistence)
+(Telegram)                    ▲
+                               │
+                             api/  (Phase 1.1, FastAPI — same services/models/,
+                                    different front door)
 ```
 
-- **`commands/`** — one handler per Telegram command. Parses the
-  `Update`, calls into `services/`, formats the reply. No game rules live
-  here.
+- **`commands/`** — one module per Telegram command (or small group of
+  closely related commands, e.g. `gacha.py` holds both `/pull` and
+  `/pull10`). Parses the `Update`, calls into `services/`, formats the
+  reply. No game rules live here. Every function that ends in `_command`
+  (or is registered as a `CommandHandler`/`CallbackQueryHandler` in
+  `app.py`) lives in one of these files — nothing else does.
+- **`commands/helpers/`** — Telegram-aware plumbing that more than one
+  command file needs, but that isn't itself a command: chat-type/
+  permission checks (`scoping.py`), resolving which player a command
+  targets (`targeting.py`), formatting constants shared across replies
+  (`formatting.py`), and the command-menu data shared by `/` autocomplete
+  and `/help` (`menu.py`). Nothing in this package registers a handler in
+  `app.py`. The test for "does this belong in `commands/helpers/` instead
+  of a plain `commands/*.py` file" is simple: does it get used by more
+  than one command module, or does it not correspond to an actual
+  `/command` at all? Either one means `helpers/`, not the flat directory.
 - **`services/`** — the game logic, framework-agnostic (no
   `python-telegram-bot` imports). This is what unit tests target, and
   what both `commands/` and (from Phase 1.1) `api/` call into — one
   source of truth for gacha/economy rules shared between the bot and the
-  web panel, not two parallel implementations.
+  web panel, not two parallel implementations. Mostly one module per
+  domain (`gacha.py`, `economy.py`, `roster.py`), but a concept that
+  isn't owned by any single domain gets its own shared module instead of
+  living inside whichever domain happened to need it first — e.g.
+  `players.py` (a player's Telegram identity and its lookup, used by both
+  `gacha.py` and `economy.py`) and `pagination.py` (paging any sequence,
+  used by `collection.py` today and by Phase 1.1's `/banners`/admin-panel
+  listings later). If you're about to add a function or type to a
+  domain's `services/` module and it doesn't actually reference that
+  domain's rules (no pity/rarity math in it, no currency amounts, no
+  roster fields), that's the sign it belongs in a shared module instead —
+  see "Before adding something new" below.
 - **`models/`** — SQLAlchemy ORM models, one module per table/aggregate.
+  Columns and relationships only — if a model file needs a method beyond
+  what SQLAlchemy itself generates, that logic belongs in `services/`
+  instead.
 - **`api/`** (Phase 1.1) — FastAPI routes for the admin panel: one
   handler per endpoint, parses the request, calls into `services/`,
   returns a Pydantic response model. Validates Keycloak-issued OIDC
@@ -94,6 +121,26 @@ commands/  →  services/  →  models/
 This separation exists so pity math, RNG weighting, and balance changes can
 be tested as plain Python without a Telegram update, an HTTP request, or a
 live DB.
+
+### Before adding something new
+
+When a change introduces a genuinely new file, module, enum, or shared
+concept — not just a function added to an existing, already-scoped file —
+its placement gets discussed and decided explicitly before writing code,
+and this section gets updated with the decision. The alternative is how
+`commands/helpers/`, `services/pagination.py`, and the move of `PlayerRef`
+into `services/players.py` all came to be needed in the first place: each
+one was originally dropped into whichever file happened to need it first
+(`economy.py`, `collection.py`, `gacha.py`), not because it belonged
+there, and it took a dedicated audit
+([#58](https://github.com/sm-steel/ley-shards-bot/issues/58)) to notice
+and fix it. Deciding placement up front is cheaper than an audit later.
+
+A quick way to sanity-check a placement decision before committing to it:
+does the new code reference the domain it's about to live in? A rule that
+touches pity counters or rarity weights belongs in `services/gacha.py`; a
+permission check or a value object with no game-rule content in it almost
+certainly doesn't belong in any single domain's file.
 
 ## Data model
 
@@ -295,10 +342,13 @@ they've registered) — confirm this when the ticket is implemented.
 
 ## Testing strategy
 
-- **Unit tests** (`tests/`, mirrors `services/`+`models/`): pity/RNG
-  statistical simulation (thousands of simulated pulls per banner type
-  confirming rates converge and pity actually forces a 5★ by the hard-pity
-  pull), economy balance math, roster rarity bucketing.
+- **Unit tests** (`tests/`, mirrors `src/` layout): `services/`+`models/`
+  tests cover pity/RNG statistical simulation (thousands of simulated
+  pulls per banner type confirming rates converge and pity actually
+  forces a 5★ by the hard-pity pull), economy balance math, and roster
+  rarity bucketing. `commands/` tests are thin-layer — topic/DM scoping,
+  error-to-reply mapping, that a successful action produces the right
+  reply — not a second copy of the game-math tests.
 - **`api/` tests** (Phase 1.1): route-level tests against `services/`
   the same way `commands/` tests do today, plus auth tests (token
   validation, role gating).
