@@ -18,11 +18,13 @@ from ley_shards_bot.models import (
     BannerType,
     Base,
     Character,
+    CurrencyType,
     PityState,
     Player,
     PlayerCharacter,
     Rarity,
 )
+from ley_shards_bot.services import currency
 from ley_shards_bot.services.gacha import (
     CONSTELLATION_MAX_COPIES,
     ECHOES_PER_DUPLICATE,
@@ -31,6 +33,7 @@ from ley_shards_bot.services.gacha import (
     PULL_COST_LEY_SHARDS,
     TEN_PULL_COST_LEY_SHARDS,
     TEN_PULL_SIZE,
+    ConfirmationRequiredError,
     InsufficientLeyShardsError,
     five_star_probability,
     get_or_create_standard_banner,
@@ -236,7 +239,9 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         player = session.get(Player, 1)
         assert player is not None
@@ -247,7 +252,13 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, PlayerRef(1, username="aleksey"), banner, rng=random.Random(SEED))
+        pull_single(
+            session,
+            PlayerRef(1, username="aleksey"),
+            banner,
+            rng=random.Random(SEED),
+            confirmed_direct_spend=True,
+        )
 
         assert session.get(Player, 1).username == "aleksey"
 
@@ -270,7 +281,9 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         ownership = session.get(PlayerCharacter, (1, outcome.character.anilist_id))
         assert ownership is not None
@@ -283,8 +296,12 @@ class TestPullSingle:
         _seed_roster(session)
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
-        first = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
-        second = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
+        first = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(1), confirmed_direct_spend=True
+        )
+        second = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(1), confirmed_direct_spend=True
+        )
 
         assert first.character.anilist_id == second.character.anilist_id
         assert second.is_new is False
@@ -303,7 +320,10 @@ class TestPullSingle:
         banner = get_or_create_standard_banner(session)
 
         outcomes = [
-            pull_single(session, PlayerRef(1), banner, rng=random.Random(1)) for _ in range(3)
+            pull_single(
+                session, PlayerRef(1), banner, rng=random.Random(1), confirmed_direct_spend=True
+            )
+            for _ in range(3)
         ]
 
         character_id = outcomes[0].character.anilist_id
@@ -333,7 +353,9 @@ class TestPullSingle:
         )
         session.commit()
 
-        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         assert outcome.character.anilist_id == 5
         assert outcome.is_new is False
@@ -368,7 +390,9 @@ class TestPullSingle:
         session.add(PlayerCharacter(player_id=1, character_id=5, copies_owned=6))
         session.commit()
 
-        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         assert outcome.character.anilist_id == 5
         assert outcome.constellation_level == 6
@@ -382,8 +406,12 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
-        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
+        pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         pity = session.get(PityState, (1, BannerType.STANDARD))
         assert pity is not None
@@ -394,7 +422,9 @@ class TestPullSingle:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         from ley_shards_bot.models import Pull
 
@@ -407,7 +437,9 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        pull_ten(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         player = session.get(Player, 1)
         assert player is not None
@@ -418,7 +450,9 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        outcomes = pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        outcomes = pull_ten(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         assert len(outcomes) == TEN_PULL_SIZE
 
@@ -427,7 +461,13 @@ class TestPullTen:
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
 
-        pull_ten(session, PlayerRef(1, username="aleksey"), banner, rng=random.Random(SEED))
+        pull_ten(
+            session,
+            PlayerRef(1, username="aleksey"),
+            banner,
+            rng=random.Random(SEED),
+            confirmed_direct_spend=True,
+        )
 
         assert session.get(Player, 1).username == "aleksey"
 
@@ -440,7 +480,13 @@ class TestPullTen:
         for seed in range(50):
             session.add(Player(telegram_user_id=100 + seed, ley_shards=100_000))
             session.commit()
-            outcomes = pull_ten(session, PlayerRef(100 + seed), banner, rng=random.Random(seed))
+            outcomes = pull_ten(
+                session,
+                PlayerRef(100 + seed),
+                banner,
+                rng=random.Random(seed),
+                confirmed_direct_spend=True,
+            )
             assert any(o.rarity in (Rarity.FOUR_STAR, Rarity.FIVE_STAR) for o in outcomes)
 
     def test_rejects_insufficient_balance_without_charging_partial_cost(self, session):
@@ -455,6 +501,112 @@ class TestPullTen:
         player = session.get(Player, 1)
         assert player is not None
         assert player.ley_shards == 100
+
+
+class TestTicketAwarePullCost:
+    def test_pull_single_spends_a_standard_ticket_instantly_when_available(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 1)
+        banner = get_or_create_standard_banner(session)
+
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert outcome is not None
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 0
+        player = session.get(Player, 1)
+        assert player.ley_shards == 100_000  # untouched — the ticket covered it
+
+    def test_pull_single_with_no_ticket_requires_confirmation(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(ConfirmationRequiredError) as exc_info:
+            pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert exc_info.value.ley_shards_required == PULL_COST_LEY_SHARDS
+        assert exc_info.value.tickets_to_spend == 0
+        player = session.get(Player, 1)
+        assert player.ley_shards == 100_000  # nothing spent yet
+
+    def test_pull_single_confirmed_spends_ley_shards_directly(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
+
+        assert outcome is not None
+        player = session.get(Player, 1)
+        assert player.ley_shards == 100_000 - PULL_COST_LEY_SHARDS
+
+    def test_pull_ten_with_partial_tickets_requires_confirmation_for_the_shortfall_only(
+        self, session
+    ):
+        _seed_roster(session)
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 4)
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(ConfirmationRequiredError) as exc_info:
+            pull_ten(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert exc_info.value.tickets_to_spend == 4
+        assert exc_info.value.ley_shards_required == 6 * PULL_COST_LEY_SHARDS
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 4  # untouched
+
+    def test_pull_ten_confirmed_spends_the_shortfall_tickets_and_ley_shards(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 4)
+        banner = get_or_create_standard_banner(session)
+
+        outcomes = pull_ten(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
+
+        assert len(outcomes) == TEN_PULL_SIZE
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 0
+        player = session.get(Player, 1)
+        assert player.ley_shards == 100_000 - 6 * PULL_COST_LEY_SHARDS
+
+    def test_confirmed_but_insufficient_ley_shards_still_raises_insufficient_error(self, session):
+        _seed_roster(session)
+        session.add(Player(telegram_user_id=1, ley_shards=10))
+        session.commit()
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(InsufficientLeyShardsError):
+            pull_single(
+                session,
+                PlayerRef(1),
+                banner,
+                rng=random.Random(SEED),
+                confirmed_direct_spend=True,
+            )
+
+    def test_pull_single_on_event_banner_ignores_standard_ticket_balance(self, session):
+        """A standard ticket must never cover a pull on a non-standard
+        banner — ticket types are not interchangeable (GACHA.md). Even
+        with a standard ticket in hand, an event-banner pull must still
+        require Ley Shards confirmation, and the ticket must remain
+        unspent."""
+        _seed_roster(session)
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 1)
+        event_banner = Banner(type=BannerType.EVENT, name="Test Event", rate_up_character_id=5)
+        session.add(event_banner)
+        session.commit()
+
+        with pytest.raises(ConfirmationRequiredError) as exc_info:
+            pull_single(session, PlayerRef(1), event_banner, rng=random.Random(SEED))
+
+        assert exc_info.value.tickets_to_spend == 0
+        assert exc_info.value.ley_shards_required == PULL_COST_LEY_SHARDS
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 1  # untouched
 
 
 class TestEventBannerRateUp:
@@ -477,7 +629,9 @@ class TestEventBannerRateUp:
         session.add(pity)
         session.commit()
 
-        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(SEED), confirmed_direct_spend=True
+        )
 
         assert outcome.rarity == Rarity.FIVE_STAR
         assert outcome.character.anilist_id == 5
@@ -501,7 +655,9 @@ class TestEventBannerRateUp:
         session.add(pity)
         session.commit()
 
-        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(2))
+        outcome = pull_single(
+            session, PlayerRef(1), banner, rng=random.Random(2), confirmed_direct_spend=True
+        )
 
         refreshed = session.get(PityState, (1, BannerType.EVENT))
         assert refreshed is not None

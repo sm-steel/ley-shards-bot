@@ -26,11 +26,13 @@ from ley_shards_bot.models import (
     Banner,
     BannerType,
     Character,
+    CurrencyType,
     PityState,
     PlayerCharacter,
     Pull,
     Rarity,
 )
+from ley_shards_bot.services import currency
 from ley_shards_bot.services.players import PlayerRef, get_or_create_player
 from ley_shards_bot.time_utils import utc_now
 
@@ -79,6 +81,21 @@ class InsufficientLeyShardsError(Exception):
         self.required = required
         self.available = available
         super().__init__(f"Need {required} Ley Shards, have {available}.")
+
+
+class ConfirmationRequiredError(Exception):
+    """Raised before any RNG/state mutation when a pull would draw on
+    Ley Shards directly — no matching standard ticket for a single pull,
+    or a ticket shortfall for a 10-pull — and the caller hasn't already
+    confirmed that spend via confirmed_direct_spend=True.
+    tickets_to_spend is how many standard tickets will ALSO be spent
+    alongside the confirmed Ley Shards amount (0 for a single pull with
+    zero tickets; nonzero for a partially-ticket-covered 10-pull)."""
+
+    def __init__(self, ley_shards_required: int, tickets_to_spend: int) -> None:
+        self.ley_shards_required = ley_shards_required
+        self.tickets_to_spend = tickets_to_spend
+        super().__init__(f"Confirm spending {ley_shards_required} Ley Shards directly.")
 
 
 class EmptyRarityPoolError(Exception):
@@ -164,6 +181,37 @@ def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
 # ---------------------------------------------------------------------------
 # DB-touching orchestration
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _PullCostPlan:
+    tickets_to_spend: int
+    ley_shards_required: int
+
+
+def _plan_standard_pull_cost(
+    session: Session, player_id: int, banner: Banner, pull_count: int
+) -> _PullCostPlan:
+    """Ticket-then-Ley-Shards cost split for `pull_count` pulls on the
+    given banner. TODO(#32): only ever checks STANDARD_TICKET, and only
+    when banner.type is STANDARD — /pull and /pull10 always operate on
+    the standard banner until banner selection lands, but a non-standard
+    banner must never draw on the standard ticket balance (ticket types
+    are not interchangeable — see GACHA.md). Once #32 adds an
+    event-banner getter, extend this (or add a parallel
+    _plan_event_pull_cost) to check EVENT_TICKET the same way for event
+    banners."""
+    available_tickets = (
+        currency.get_balance(session, player_id, CurrencyType.STANDARD_TICKET)
+        if banner.type == BannerType.STANDARD
+        else 0
+    )
+    tickets_to_spend = min(available_tickets, pull_count)
+    pulls_via_ley_shards = pull_count - tickets_to_spend
+    return _PullCostPlan(
+        tickets_to_spend=tickets_to_spend,
+        ley_shards_required=pulls_via_ley_shards * PULL_COST_LEY_SHARDS,
+    )
 
 
 def get_or_create_standard_banner(session: Session) -> Banner:
@@ -273,26 +321,40 @@ def _execute_single_pull(
 
 
 def pull_single(
-    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
+    session: Session,
+    player: PlayerRef,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    confirmed_direct_spend: bool = False,
 ) -> PullOutcome:
     rng = rng or random.Random()
     now = utc_now()
 
     account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    if account.ley_shards < PULL_COST_LEY_SHARDS:
+    plan = _plan_standard_pull_cost(session, player.telegram_user_id, banner, 1)
+    if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "Pull rejected for {}: need {} Ley Shards, have {}",
             player.telegram_user_id,
-            PULL_COST_LEY_SHARDS,
+            plan.ley_shards_required,
             account.ley_shards,
         )
-        raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, account.ley_shards)
-    account.ley_shards -= PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(plan.ley_shards_required, account.ley_shards)
+    if plan.ley_shards_required > 0 and not confirmed_direct_spend:
+        raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
+
+    if plan.tickets_to_spend > 0:
+        currency.spend(
+            session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
+        )
+    account.ley_shards -= plan.ley_shards_required
 
     outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
     session.commit()
     logger.info(
-        "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={})",
+        "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={}, "
+        "tickets_spent={}, ley_shards_spent={})",
         player.telegram_user_id,
         banner.type,
         outcome.rarity,
@@ -301,12 +363,19 @@ def pull_single(
         outcome.constellation_level,
         outcome.echoes_gained,
         outcome.is_rate_up,
+        plan.tickets_to_spend,
+        plan.ley_shards_required,
     )
     return outcome
 
 
 def pull_ten(
-    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
+    session: Session,
+    player: PlayerRef,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    confirmed_direct_spend: bool = False,
 ) -> list[PullOutcome]:
     """Ten pulls charged as one batch. No separate "at least one 4-star+"
     logic is needed here: the continuous pulls_since_last_4star pity
@@ -317,15 +386,23 @@ def pull_ten(
     now = utc_now()
 
     account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    if account.ley_shards < TEN_PULL_COST_LEY_SHARDS:
+    plan = _plan_standard_pull_cost(session, player.telegram_user_id, banner, TEN_PULL_SIZE)
+    if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "10-pull rejected for {}: need {} Ley Shards, have {}",
             player.telegram_user_id,
-            TEN_PULL_COST_LEY_SHARDS,
+            plan.ley_shards_required,
             account.ley_shards,
         )
-        raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, account.ley_shards)
-    account.ley_shards -= TEN_PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(plan.ley_shards_required, account.ley_shards)
+    if plan.ley_shards_required > 0 and not confirmed_direct_spend:
+        raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
+
+    if plan.tickets_to_spend > 0:
+        currency.spend(
+            session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
+        )
+    account.ley_shards -= plan.ley_shards_required
 
     outcomes = [
         _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
@@ -334,9 +411,11 @@ def pull_ten(
     session.commit()
     rarity_counts = Counter(outcome.rarity for outcome in outcomes)
     logger.info(
-        "10-pull: player={} banner={} -> {}",
+        "10-pull: player={} banner={} -> {} (tickets_spent={}, ley_shards_spent={})",
         player.telegram_user_id,
         banner.type,
         dict(rarity_counts),
+        plan.tickets_to_spend,
+        plan.ley_shards_required,
     )
     return outcomes
