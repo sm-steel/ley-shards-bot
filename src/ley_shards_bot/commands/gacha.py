@@ -17,6 +17,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ley_shards_bot.commands.helpers.formatting import RARITY_STARS
 from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.models import Rarity
@@ -29,12 +30,6 @@ if TYPE_CHECKING:
     from telegram import Message, User
 
 _PullResultT = TypeVar("_PullResultT")
-
-_RARITY_STARS = {
-    Rarity.THREE_STAR: "★★★",
-    Rarity.FOUR_STAR: "★★★★",
-    Rarity.FIVE_STAR: "★★★★★",
-}
 
 # 10-pull sends a text summary of everything, plus a photo card for these
 # rarities only — every character in a highlight-only feed would be spam.
@@ -50,7 +45,7 @@ def _rate_up_note(outcome: gacha.PullOutcome) -> str:
 
 
 def _format_outcome_line(outcome: gacha.PullOutcome) -> str:
-    stars = _RARITY_STARS[outcome.rarity]
+    stars = RARITY_STARS[outcome.rarity]
     status = "NEW" if outcome.is_new else f"dupe, +{outcome.echoes_gained} Echoes"
     return (
         f"{stars} {outcome.character.name} — {outcome.character.series} "
@@ -60,7 +55,7 @@ def _format_outcome_line(outcome: gacha.PullOutcome) -> str:
 
 def _format_single_caption(outcome: gacha.PullOutcome) -> str:
     lines = [
-        f"{_RARITY_STARS[outcome.rarity]} {outcome.character.name}",
+        f"{RARITY_STARS[outcome.rarity]} {outcome.character.name}",
         outcome.character.series,
         "✨ NEW!" if outcome.is_new else f"Duplicate — +{outcome.echoes_gained} Echoes",
     ]
@@ -83,7 +78,7 @@ async def _announce_rare_pull(
         config = context.bot_data["config"]
         text = (
             f"🎉 {user.first_name} just pulled a "
-            f"{_RARITY_STARS[outcome.rarity]} {outcome.character.name}!"
+            f"{RARITY_STARS[outcome.rarity]} {outcome.character.name}!"
         )
         await context.bot.send_message(
             chat_id=config.group_chat_id, message_thread_id=config.gacha_topic_id, text=text

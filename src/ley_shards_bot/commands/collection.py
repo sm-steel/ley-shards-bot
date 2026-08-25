@@ -15,16 +15,10 @@ from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from ley_shards_bot.commands.helpers.formatting import RARITY_STARS
 from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
-from ley_shards_bot.models import Rarity
 from ley_shards_bot.services.collection import PAGE_SIZE, Page, get_owned_characters, paginate
-
-_RARITY_STARS = {
-    Rarity.THREE_STAR: "★★★",
-    Rarity.FOUR_STAR: "★★★★",
-    Rarity.FIVE_STAR: "★★★★★",
-}
 
 # Registered elsewhere (task #8's Application wiring) with a
 # CallbackQueryHandler(pattern=f"^{_CALLBACK_PREFIX}:").
@@ -53,7 +47,7 @@ def _format_page_text(page: Page, total_owned: int) -> str:
         f"{page.page_number + 1}/{page.total_pages}:"
     ]
     for owned in page.items:
-        stars = _RARITY_STARS[owned.character.rarity]
+        stars = RARITY_STARS[owned.character.rarity]
         copies = f" x{owned.copies_owned}" if owned.copies_owned > 1 else ""
         lines.append(f"{stars} {owned.character.name}{copies}")
     return "\n".join(lines)
