@@ -20,9 +20,17 @@ src/ley_shards_bot/
   config.py       # env/.env loading — the only place that reads os.environ
   commands/       # one module per Telegram command (thin: parse update,
                    # call a service, format a reply — no business logic here)
+    helpers/      # shared Telegram-aware plumbing used across commands —
+                   # scoping/permission checks, target resolution, shared
+                   # formatting, the command menu. Nothing here registers a
+                   # CommandHandler; see ARCHITECTURE.md's Component
+                   # boundaries for the full commands/ vs commands/helpers/
+                   # split and why it exists.
   services/       # the actual game logic: economy, gacha engine, roster
-                   # ingestion. Framework-agnostic — no python-telegram-bot
-                   # imports in this package.
+                   # ingestion, plus shared cross-domain concepts no single
+                   # domain owns (players.py, pagination.py). Framework-
+                   # agnostic — no python-telegram-bot imports in this
+                   # package.
   models/         # SQLAlchemy ORM models, one module per table/aggregate
   api/            # (Phase 1.1) FastAPI routes for the admin panel — same
                    # rule as commands/: parse the request, call a service,
@@ -30,8 +38,11 @@ src/ley_shards_bot/
                    # Shares services/+models/ with the bot, doesn't
                    # reimplement game rules.
 migrations/       # Alembic migrations
-tests/            # mirrors src/ layout; unit tests target services/ and
-                   # models/, not the Telegram command handlers directly
+tests/            # mirrors src/ layout, including tests/commands/ — unit
+                   # tests target services/, models/, AND the Telegram
+                   # command handlers directly (thin-layer: topic scoping,
+                   # error-to-reply mapping, not the game math those
+                   # handlers call into)
 scripts/          # one-off / operational scripts (e.g. roster ingestion CLI)
 admin/            # (Phase 1.1) Vite + TypeScript + React admin frontend —
                    # separate toolchain, see "Tooling" below. Built to
