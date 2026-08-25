@@ -30,6 +30,7 @@ from ley_shards_bot.commands.economy import (
 from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
 from ley_shards_bot.commands.help import help_command
 from ley_shards_bot.commands.helpers.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
+from ley_shards_bot.commands.tickets import buy_ticket_command
 from ley_shards_bot.config import Config
 from ley_shards_bot.logging_config import setup_logging
 
@@ -79,6 +80,7 @@ def build_application(config: Config) -> Application:
     application.add_handler(CommandHandler("pull", pull_command))
     application.add_handler(CommandHandler("pull10", pull_ten_command))
     application.add_handler(CommandHandler("collection", collection_command))
+    application.add_handler(CommandHandler("buy_ticket", buy_ticket_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CallbackQueryHandler(collection_page_callback, pattern=r"^coll:"))
 
