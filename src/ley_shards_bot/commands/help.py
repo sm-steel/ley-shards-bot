@@ -1,7 +1,7 @@
 """/help — lists available commands with a one-line description each.
 Admin-only commands only appear for admins. See issue #16.
 
-Descriptions come from commands/menu.py, the same list used to register
+Descriptions come from commands/helpers/menu.py, the same list used to register
 Telegram's / autocomplete (issue #15) — one source of truth, not two
 copies that can drift apart.
 """
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ley_shards_bot.commands.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
+from ley_shards_bot.commands.helpers.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
 
 if TYPE_CHECKING:
     from telegram import BotCommand

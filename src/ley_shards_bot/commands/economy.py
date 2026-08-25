@@ -21,7 +21,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ley_shards_bot.commands.scoping import NOT_IN_DM_MESSAGE, in_private_chat
+from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
 from ley_shards_bot.services.players import find_player_by_username

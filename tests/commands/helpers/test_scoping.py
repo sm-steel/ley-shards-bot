@@ -5,7 +5,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ley_shards_bot.commands.scoping import in_private_chat
+from ley_shards_bot.commands.helpers.scoping import in_private_chat
 
 
 def _make_update(*, chat_type: str | None) -> MagicMock:

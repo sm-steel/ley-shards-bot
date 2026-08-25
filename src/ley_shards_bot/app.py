@@ -29,7 +29,7 @@ from ley_shards_bot.commands.economy import (
 )
 from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
 from ley_shards_bot.commands.help import help_command
-from ley_shards_bot.commands.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
+from ley_shards_bot.commands.helpers.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
 from ley_shards_bot.config import Config
 from ley_shards_bot.logging_config import setup_logging
 

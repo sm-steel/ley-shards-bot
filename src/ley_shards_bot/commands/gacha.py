@@ -17,7 +17,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ley_shards_bot.commands.scoping import NOT_IN_DM_MESSAGE, in_private_chat
+from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.models import Rarity
 from ley_shards_bot.services import gacha
