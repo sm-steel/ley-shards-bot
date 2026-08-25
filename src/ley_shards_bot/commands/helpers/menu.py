@@ -2,7 +2,7 @@
 exist, their one-line descriptions, and whether they're admin-only.
 
 Shared by Telegram's `/` autocomplete (app.py's `register_commands`, see
-issue #15) and `/help` (this package's `help.py`, see issue #16) so the
+issue #15) and `/help` (`commands/help.py`, see issue #16) so the
 two can't drift out of sync with each other.
 """
 

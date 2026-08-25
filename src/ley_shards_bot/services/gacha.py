@@ -31,7 +31,7 @@ from ley_shards_bot.models import (
     Pull,
     Rarity,
 )
-from ley_shards_bot.services.players import get_or_create_player
+from ley_shards_bot.services.players import PlayerRef, get_or_create_player
 from ley_shards_bot.time_utils import utc_now
 
 if TYPE_CHECKING:
@@ -76,17 +76,6 @@ class InsufficientLeyShardsError(Exception):
 class EmptyRarityPoolError(Exception):
     """Raised if no characters of a rolled rarity exist — an empty or
     incomplete roster, not a player-facing condition."""
-
-
-@dataclass(frozen=True)
-class PlayerRef:
-    """A player's Telegram identity: id plus the opportunistically
-    captured @username (see #12) — bundled together because pull_single/
-    pull_ten treat "who's pulling" as one concept, not two independent
-    parameters. See issue #49."""
-
-    telegram_user_id: int
-    username: str | None = None
 
 
 @dataclass(frozen=True)

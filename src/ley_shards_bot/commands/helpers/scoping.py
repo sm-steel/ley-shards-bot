@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from telegram import Update
+    from telegram.ext import ContextTypes
 
 #: Reply text every DM-scoped command sends when used outside a private chat.
 NOT_IN_DM_MESSAGE = "Use this in a DM with the bot, not the group."
@@ -24,3 +25,9 @@ NOT_IN_DM_MESSAGE = "Use this in a DM with the bot, not the group."
 def in_private_chat(update: Update) -> bool:
     chat = update.effective_chat
     return chat is not None and chat.type == "private"
+
+
+def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    config = context.bot_data["config"]
+    user = update.effective_user
+    return user is not None and user.id in config.admin_user_ids

@@ -1,9 +1,14 @@
 """Shared player lookup — used by economy.py and gacha.py alike, so it
-lives in its own module rather than being owned by either.
+lives in its own module rather than being owned by either. PlayerRef
+follows the same reasoning: a player's Telegram identity (id + the
+opportunistically captured @username) isn't gacha-specific, it just
+started out defined in services/gacha.py because pull_single/pull_ten
+were its first consumer — see issue #58.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -13,6 +18,17 @@ from ley_shards_bot.models import Player
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+@dataclass(frozen=True)
+class PlayerRef:
+    """A player's Telegram identity: id plus the opportunistically
+    captured @username (see #12) — bundled together because callers that
+    need "who is this" treat it as one concept, not two independent
+    parameters. See issue #49."""
+
+    telegram_user_id: int
+    username: str | None = None
 
 
 def get_or_create_player(
