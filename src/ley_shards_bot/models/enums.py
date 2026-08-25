@@ -18,3 +18,14 @@ class Rarity(IntEnum):
 class BannerType(StrEnum):
     STANDARD = "standard"
     EVENT = "event"
+
+
+class CurrencyType(StrEnum):
+    """Keys into player_currencies — a generic per-player balance ledger
+    (see services/currency.py). Ley Shards and Echoes are NOT here; they
+    stay as columns on Player for now (# TODO: migrating them onto this
+    same ledger is a reasonable future cleanup, not part of issue #20).
+    """
+
+    STANDARD_TICKET = "standard_ticket"
+    EVENT_TICKET = "event_ticket"
