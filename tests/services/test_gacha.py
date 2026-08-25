@@ -31,7 +31,6 @@ from ley_shards_bot.services.gacha import (
     TEN_PULL_COST_LEY_SHARDS,
     TEN_PULL_SIZE,
     InsufficientLeyShardsError,
-    PlayerRef,
     five_star_probability,
     get_or_create_standard_banner,
     next_pity_counts,
@@ -40,6 +39,7 @@ from ley_shards_bot.services.gacha import (
     resolve_event_five_star,
     roll_rarity,
 )
+from ley_shards_bot.services.players import PlayerRef
 
 SEED = 1234
 
