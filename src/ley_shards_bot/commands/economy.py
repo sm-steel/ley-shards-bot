@@ -7,7 +7,7 @@ format the reply. No game rules live here.
 Handlers expect `context.bot_data["config"]` to hold the running Config
 (for admin_user_ids) — set once at Application startup.
 
-`/daily` is DM-scoped (see `commands/scoping.py` and issue #17); the
+`/daily` is DM-scoped (see `commands/helpers/scoping.py` and issue #17); the
 admin commands and trickle are not — see ARCHITECTURE.md's "Commands &
 topics" section for why.
 """
@@ -76,6 +76,8 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "/award_guess from {}", update.effective_user.id if update.effective_user else None
     )
     if not is_admin(update, context):
+        if update.effective_user is not None:
+            logger.warning("Non-admin {} attempted an admin-only command", update.effective_user.id)
         await message.reply_text("Admins only.")
         return
 
@@ -128,6 +130,8 @@ async def _execute_amount_command(
         "{} from {}", spec.command, update.effective_user.id if update.effective_user else None
     )
     if not is_admin(update, context):
+        if update.effective_user is not None:
+            logger.warning("Non-admin {} attempted an admin-only command", update.effective_user.id)
         await message.reply_text("Admins only.")
         return
 

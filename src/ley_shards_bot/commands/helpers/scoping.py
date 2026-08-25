@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 if TYPE_CHECKING:
     from telegram import Update
     from telegram.ext import ContextTypes
@@ -32,7 +30,4 @@ def in_private_chat(update: Update) -> bool:
 def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     config = context.bot_data["config"]
     user = update.effective_user
-    admin = user is not None and user.id in config.admin_user_ids
-    if user is not None and not admin:
-        logger.warning("Non-admin {} attempted an admin-only command", user.id)
-    return admin
+    return user is not None and user.id in config.admin_user_ids

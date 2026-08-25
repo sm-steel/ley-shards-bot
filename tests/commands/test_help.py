@@ -2,8 +2,11 @@
 (/grant, /revoke, /award_guess) only show up for admins. See issue #16.
 """
 
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
+from loguru import logger
 
 from ley_shards_bot.commands import help as help_commands
 
@@ -65,3 +68,15 @@ class TestHelpCommand:
 
         (text,), _ = update.effective_message.reply_text.call_args
         assert "/grant" not in text
+
+    async def test_does_not_log_a_warning_for_an_ordinary_non_admin(self):
+        update = _make_update(user_id=1)
+        context = _make_context(admin_ids=frozenset())
+        sink = StringIO()
+        handler_id = logger.add(sink, level="WARNING")
+        try:
+            await help_commands.help_command(update, context)
+        finally:
+            logger.remove(handler_id)
+
+        assert "attempted an admin-only" not in sink.getvalue()

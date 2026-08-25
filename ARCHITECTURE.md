@@ -67,20 +67,21 @@ Telegram  ◄── proxy ──────────────┼──┤
 ## Component boundaries
 
 ```
-commands/            →  services/           →  models/
-commands/helpers/       (game rules)            (persistence)
-(Telegram)                    ▲
-                               │
-                             api/  (Phase 1.1, FastAPI — same services/models/,
-                                    different front door)
+commands/        →  services/  →  models/
+commands/helpers/   (game rules)  (persistence)
+(Telegram)                ▲
+                          │
+                        api/  (Phase 1.1, FastAPI — same services/models/,
+                               different front door)
 ```
 
 - **`commands/`** — one module per Telegram command (or small group of
   closely related commands, e.g. `gacha.py` holds both `/pull` and
   `/pull10`). Parses the `Update`, calls into `services/`, formats the
   reply. No game rules live here. Every function that ends in `_command`
-  (or is registered as a `CommandHandler`/`CallbackQueryHandler` in
-  `app.py`) lives in one of these files — nothing else does.
+  (or is registered as a `CommandHandler`/`CallbackQueryHandler`/
+  `MessageHandler` in `app.py`) lives in one of these files — nothing
+  else does.
 - **`commands/helpers/`** — Telegram-aware plumbing that more than one
   command file needs, but that isn't itself a command: chat-type/
   permission checks (`scoping.py`), resolving which player a command

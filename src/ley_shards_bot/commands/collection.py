@@ -2,11 +2,12 @@
 owned characters via inline-keyboard paging.
 
 Thin by design (see CLAUDE.md): parse the Update, call
-services/collection.py, format the reply. The callback_data for paging
-buttons embeds the *owner's* user id (not just the page number) so that
-another player clicking the button in a shared group chat can't page
-through — or silently swap the message into showing — someone else's
-collection.
+services/collection.py to fetch a player's owned characters and
+services/pagination.py to slice that list into pages, format the reply.
+The callback_data for paging buttons embeds the *owner's* user id (not
+just the page number) so that another player clicking the button in a
+shared group chat can't page through — or silently swap the message into
+showing — someone else's collection.
 """
 
 from __future__ import annotations
