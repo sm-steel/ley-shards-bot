@@ -25,3 +25,4 @@ jobs:
       # never the real MariaDB the bot runs against in production.
       - name: Run tests
         run: uv run pytest -q
+
