@@ -216,7 +216,14 @@ class TestPullTenCommand:
         assert "10-pull" not in text.lower()
 
 
-def _make_outcome(rarity: Rarity, *, character_name: str = "Frieren") -> gacha_service.PullOutcome:
+def _make_outcome(
+    rarity: Rarity,
+    *,
+    character_name: str = "Frieren",
+    is_new: bool = True,
+    constellation_level: int | None = None,
+    echoes_gained: int = 0,
+) -> gacha_service.PullOutcome:
     character = Character(
         anilist_id=99,
         name=character_name,
@@ -229,7 +236,12 @@ def _make_outcome(rarity: Rarity, *, character_name: str = "Frieren") -> gacha_s
         base_spd=1,
     )
     return gacha_service.PullOutcome(
-        character=character, rarity=rarity, is_new=True, echoes_gained=0, is_rate_up=None
+        character=character,
+        rarity=rarity,
+        is_new=is_new,
+        echoes_gained=echoes_gained,
+        constellation_level=constellation_level,
+        is_rate_up=None,
     )
 
 

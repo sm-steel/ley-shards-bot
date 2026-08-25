@@ -24,6 +24,7 @@ from ley_shards_bot.models import (
     Rarity,
 )
 from ley_shards_bot.services.gacha import (
+    CONSTELLATION_MAX_COPIES,
     ECHOES_PER_DUPLICATE,
     FIVE_STAR_HARD_PITY,
     FOUR_STAR_HARD_PITY,
@@ -276,26 +277,105 @@ class TestPullSingle:
         assert ownership.copies_owned == 1
         assert outcome.is_new is True
         assert outcome.echoes_gained == 0
+        assert outcome.constellation_level is None
 
-    def test_duplicate_pull_converts_to_echoes_instead_of_a_second_copy(self, session):
+    def test_duplicate_pull_levels_up_constellation_instead_of_granting_echoes(self, session):
         _seed_roster(session)
         _rich_player(session)
         banner = get_or_create_standard_banner(session)
-        # Force every roll to hit the only 3-star character by pinning the
-        # rng seed and rarity via a hard-pitied 5-star being impossible
-        # here — simplest reliable way is two pulls with a rng that lands
-        # 3-star both times isn't guaranteed by seed alone, so instead
-        # drive it directly through the pity state to keep this fast and
-        # deterministic: bottom rarity is overwhelmingly likely at pity 0.
         first = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
         second = pull_single(session, PlayerRef(1), banner, rng=random.Random(1))
 
         assert first.character.anilist_id == second.character.anilist_id
         assert second.is_new is False
-        assert second.echoes_gained == ECHOES_PER_DUPLICATE[second.rarity]
+        assert second.constellation_level == 1
+        assert second.echoes_gained == 0
+        ownership = session.get(PlayerCharacter, (1, second.character.anilist_id))
+        assert ownership is not None
+        assert ownership.copies_owned == 2
         player = session.get(Player, 1)
         assert player is not None
-        assert player.echoes == ECHOES_PER_DUPLICATE[second.rarity]
+        assert player.echoes == 0
+
+    def test_repeated_duplicates_cascade_through_constellation_levels(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        outcomes = [
+            pull_single(session, PlayerRef(1), banner, rng=random.Random(1)) for _ in range(3)
+        ]
+
+        character_id = outcomes[0].character.anilist_id
+        assert all(o.character.anilist_id == character_id for o in outcomes)
+        assert [o.constellation_level for o in outcomes] == [None, 1, 2]
+        ownership = session.get(PlayerCharacter, (1, character_id))
+        assert ownership is not None
+        assert ownership.copies_owned == 3
+
+    def test_duplicate_pull_converts_to_echoes_once_constellation_is_maxed(self, session):
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+        # Force a 5-star this pull via hard pity so it deterministically
+        # lands on the roster's one seeded 5-star character (anilist_id=5,
+        # per _seed_roster), then pre-seed that character already at the
+        # constellation cap.
+        session.add(
+            PityState(
+                player_id=1,
+                banner_type=BannerType.STANDARD,
+                pulls_since_last_5star=FIVE_STAR_HARD_PITY - 1,
+            )
+        )
+        session.add(
+            PlayerCharacter(player_id=1, character_id=5, copies_owned=CONSTELLATION_MAX_COPIES)
+        )
+        session.commit()
+
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert outcome.character.anilist_id == 5
+        assert outcome.is_new is False
+        assert outcome.constellation_level is None
+        assert outcome.echoes_gained == ECHOES_PER_DUPLICATE[Rarity.FIVE_STAR]
+        ownership = session.get(PlayerCharacter, (1, 5))
+        assert ownership is not None
+        assert ownership.copies_owned == CONSTELLATION_MAX_COPIES  # untouched, stays capped
+        player = session.get(Player, 1)
+        assert player is not None
+        assert player.echoes == ECHOES_PER_DUPLICATE[Rarity.FIVE_STAR]
+
+    def test_the_final_level_up_is_constellation_6_not_7(self, session):
+        """Boundary test: copies_owned climbing from 6 to 7 (the last
+        possible level-up) must report constellation_level == 6, never 7
+        — 7 total copies means levels 0 through 6 (7 states), not a level
+        7. Seeds copies_owned=6 directly (one short of the cap) rather
+        than pulling the same character 5 times first, so this test is
+        about the boundary itself, not about reproducing the cascade
+        (that's test_repeated_duplicates_cascade_through_constellation_levels's
+        job)."""
+        _seed_roster(session)
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+        session.add(
+            PityState(
+                player_id=1,
+                banner_type=BannerType.STANDARD,
+                pulls_since_last_5star=FIVE_STAR_HARD_PITY - 1,
+            )
+        )
+        session.add(PlayerCharacter(player_id=1, character_id=5, copies_owned=6))
+        session.commit()
+
+        outcome = pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert outcome.character.anilist_id == 5
+        assert outcome.constellation_level == 6
+        assert outcome.echoes_gained == 0
+        ownership = session.get(PlayerCharacter, (1, 5))
+        assert ownership is not None
+        assert ownership.copies_owned == CONSTELLATION_MAX_COPIES
 
     def test_persists_pity_state_across_calls(self, session):
         _seed_roster(session)
