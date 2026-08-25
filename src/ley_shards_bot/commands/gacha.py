@@ -12,7 +12,7 @@ result — see `_announce_rare_pull`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -321,15 +321,23 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
     `_confirm_single_pull`/`_confirm_ten_pull`)."""
     query = update.callback_query
     clicking_user = update.effective_user
-    if query is None or clicking_user is None or query.data is None or query.message is None:
+    if query is None or clicking_user is None or query.data is None:
         return
-    # query.message is typed as MaybeInaccessibleMessage (Message |
-    # InaccessibleMessage) because Bot API 7.0 added business-connection
-    # messages that can go stale — this bot never uses business
-    # connections, and this callback only ever fires against a message we
-    # ourselves just sent moments earlier, so it's always a real, usable
-    # Message here.
-    message = cast(Message, query.message)
+    if not isinstance(query.message, Message):
+        # query.message is typed as MaybeInaccessibleMessage (Message |
+        # InaccessibleMessage) — PTB's stand-in for a message that's
+        # since been deleted or otherwise gone inaccessible (its own
+        # docstring: "messages that are e.g. deleted"), not something
+        # specific to Business API connections. Realistically narrow
+        # here (the confirm/cancel prompt is normally clicked within
+        # seconds), but not impossible — the prompt could be deleted, or
+        # the bot restarted, between being sent and confirmed — and an
+        # InaccessibleMessage has no reply_photo/reply_text to call
+        # below, so bail out safely rather than risking an
+        # AttributeError.
+        await query.answer("This confirmation has expired.", show_alert=True)
+        return
+    message = query.message
 
     parsed = _parse_callback_data(query.data)
     if parsed is None:

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from telegram import User
+from telegram import Message, User
 
 from ley_shards_bot.commands import gacha as gacha_commands
 from ley_shards_bot.models import (
@@ -142,9 +142,30 @@ def _make_callback_update(*, clicking_user_id: int, data: str) -> MagicMock:
     query.data = data
     query.answer = AsyncMock()
     query.edit_message_text = AsyncMock()
-    query.message = MagicMock()
+    # spec=Message so isinstance(query.message, Message) — the real guard
+    # pull_confirmation_callback uses to reject an InaccessibleMessage —
+    # actually passes for these "normal" tests.
+    query.message = MagicMock(spec=Message)
     query.message.reply_photo = AsyncMock()
     query.message.reply_text = AsyncMock()
+    update.callback_query = query
+    return update
+
+
+def _make_callback_update_with_inaccessible_message(
+    *, clicking_user_id: int, data: str
+) -> MagicMock:
+    """Like `_make_callback_update`, but `query.message` deliberately does
+    NOT satisfy `isinstance(query.message, Message)` — simulating PTB's
+    `InaccessibleMessage` stand-in for a deleted/expired message, without
+    needing to construct a real one."""
+    update = MagicMock()
+    update.effective_user.id = clicking_user_id
+    query = MagicMock()
+    query.data = data
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.message = MagicMock()  # no spec=Message -> isinstance check fails
     update.callback_query = query
     return update
 
@@ -468,6 +489,25 @@ class TestPullConfirmationCallback:
 
         (text,), _ = update.callback_query.edit_message_text.call_args
         assert "Not enough Ley Shards" in text
+
+    async def test_expired_message_replies_with_a_safe_fallback(self, engine):
+        """query.message can be an InaccessibleMessage (PTB's stand-in for
+        a deleted/expired message) rather than a real Message — no
+        reply_photo/reply_text to call in that case, so the callback must
+        bail out with a show_alert answer instead of attempting a pull or
+        touching query.message at all."""
+        _seed_roster_and_rich_player(engine, 1)
+        update = _make_callback_update_with_inaccessible_message(
+            clicking_user_id=1, data="pull:1:single:confirm"
+        )
+        context = MagicMock()
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        update.callback_query.edit_message_text.assert_not_called()
+        update.callback_query.answer.assert_awaited_once()
+        _args, kwargs = update.callback_query.answer.call_args
+        assert kwargs.get("show_alert") is True
 
 
 class TestFormatOutcomeLine:
