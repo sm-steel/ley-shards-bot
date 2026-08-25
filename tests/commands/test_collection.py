@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ley_shards_bot.commands import collection as collection_commands
 from ley_shards_bot.models import Base, Character, Player, PlayerCharacter, Rarity
-from ley_shards_bot.services.collection import PAGE_SIZE
+from ley_shards_bot.services.pagination import PAGE_SIZE
 
 
 @pytest.fixture

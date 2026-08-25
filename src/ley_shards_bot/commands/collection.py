@@ -18,7 +18,8 @@ from telegram.ext import ContextTypes
 from ley_shards_bot.commands.helpers.formatting import RARITY_STARS
 from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
-from ley_shards_bot.services.collection import PAGE_SIZE, Page, get_owned_characters, paginate
+from ley_shards_bot.services.collection import get_owned_characters
+from ley_shards_bot.services.pagination import PAGE_SIZE, Page, paginate
 
 # Registered elsewhere (task #8's Application wiring) with a
 # CallbackQueryHandler(pattern=f"^{_CALLBACK_PREFIX}:").
