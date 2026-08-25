@@ -20,6 +20,7 @@ from ley_shards_bot.commands.helpers.formatting import RARITY_STARS
 from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services.collection import get_owned_characters
+from ley_shards_bot.services.gacha import CONSTELLATION_MAX_COPIES
 from ley_shards_bot.services.pagination import PAGE_SIZE, Page, paginate
 
 # Registered elsewhere (task #8's Application wiring) with a
@@ -52,8 +53,13 @@ def _format_page_text(page: Page, total_owned: int) -> str:
         stars = RARITY_STARS[owned.character.rarity]
         # copies_owned is constellation progress (see PlayerCharacter's
         # docstring): 1 copy = constellation 0 (no suffix shown), each
-        # copy beyond that is one constellation level.
-        constellation = f" C{owned.copies_owned - 1}" if owned.copies_owned > 1 else ""
+        # copy beyond that is one constellation level. Clamped at
+        # CONSTELLATION_MAX_COPIES - 1 (6) regardless of the raw
+        # copies_owned value — legacy rows from before this cap existed
+        # could in principle already exceed 7, and the displayed level
+        # must never read as "C7" or higher.
+        level = min(owned.copies_owned - 1, CONSTELLATION_MAX_COPIES - 1)
+        constellation = f" C{level}" if owned.copies_owned > 1 else ""
         lines.append(f"{stars} {owned.character.name}{constellation}")
     return "\n".join(lines)
 

@@ -142,7 +142,7 @@ class TestCollectionCommand:
         await collection_commands.collection_command(update, context)
 
         (text,), _kwargs = update.effective_message.reply_text.call_args
-        assert "C" not in text.split("\n")[1]
+        assert " C" not in text.split("\n")[1]
 
     async def test_shows_constellation_level_for_a_leveled_character(self, engine):
         _seed_owned_character_with_copies(engine, 1, copies_owned=4)
@@ -167,6 +167,22 @@ class TestCollectionCommand:
         (text,), _kwargs = update.effective_message.reply_text.call_args
         assert "C6" in text
         assert "C7" not in text
+
+    async def test_legacy_data_above_the_cap_still_shows_c6_never_higher(self, engine):
+        """Phase 1's old duplicate-handling code had no cap, so a
+        pre-existing row could already have copies_owned above
+        CONSTELLATION_MAX_COPIES. The display must clamp regardless —
+        this must never render as "C7", "C11", etc."""
+        _seed_owned_character_with_copies(engine, 1, copies_owned=12)
+        update = _make_update(user_id=1)
+        context = MagicMock()
+
+        await collection_commands.collection_command(update, context)
+
+        (text,), _kwargs = update.effective_message.reply_text.call_args
+        assert "C6" in text
+        assert "C7" not in text
+        assert "C11" not in text
 
     async def test_rejects_outside_dm(self, engine):
         _seed_owned_characters(engine, 1, count=3)

@@ -92,11 +92,11 @@ class PullOutcome:
     rarity: Rarity
     is_new: bool
     echoes_gained: int
-    constellation_level: int | None  # the level just reached (1-6) on a
-    # duplicate-into-level-up pull; None on a first-copy pull or on an
-    # Echoes-conversion pull (already at CONSTELLATION_MAX_COPIES). At
-    # most one of is_new/constellation_level/echoes_gained is "set" for
-    # any outcome.
+    # The level just reached (1-6) on a duplicate-into-level-up pull;
+    # None on a first-copy pull or on an Echoes-conversion pull (already
+    # at CONSTELLATION_MAX_COPIES). At most one of
+    # is_new/constellation_level/echoes_gained is "set" for any outcome.
+    constellation_level: int | None
     is_rate_up: bool | None  # None unless this was an event-banner 5-star
 
 
