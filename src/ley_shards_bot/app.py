@@ -27,7 +27,11 @@ from ley_shards_bot.commands.economy import (
     revoke_command,
     trickle_message_handler,
 )
-from ley_shards_bot.commands.gacha import pull_command, pull_ten_command
+from ley_shards_bot.commands.gacha import (
+    pull_command,
+    pull_confirmation_callback,
+    pull_ten_command,
+)
 from ley_shards_bot.commands.help import help_command
 from ley_shards_bot.commands.helpers.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
 from ley_shards_bot.commands.tickets import buy_ticket_command
@@ -83,6 +87,7 @@ def build_application(config: Config) -> Application:
     application.add_handler(CommandHandler("buy_ticket", buy_ticket_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CallbackQueryHandler(collection_page_callback, pattern=r"^coll:"))
+    application.add_handler(CallbackQueryHandler(pull_confirmation_callback, pattern=r"^pull:"))
 
     # Own handler group (not the default group 0): PTB runs at most one
     # handler per group per update, so the trickle bonus needs its own
@@ -94,7 +99,7 @@ def build_application(config: Config) -> Application:
     )
 
     logger.info(
-        "Registered {} command(s), 1 callback handler, 1 trickle handler",
+        "Registered {} command(s), 2 callback handlers, 1 trickle handler",
         len(application.handlers[0]) - 1,
     )
     return application

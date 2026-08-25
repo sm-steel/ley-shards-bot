@@ -15,7 +15,16 @@ from sqlalchemy.orm import Session
 from telegram import User
 
 from ley_shards_bot.commands import gacha as gacha_commands
-from ley_shards_bot.models import BannerType, Base, Character, PityState, Player, Rarity
+from ley_shards_bot.models import (
+    BannerType,
+    Base,
+    Character,
+    CurrencyType,
+    PityState,
+    Player,
+    Rarity,
+)
+from ley_shards_bot.services import currency
 from ley_shards_bot.services import gacha as gacha_service
 from ley_shards_bot.services.gacha import FIVE_STAR_HARD_PITY
 
@@ -93,6 +102,20 @@ def _seed_player(engine, telegram_user_id: int = 1, ley_shards: int = 100_000) -
         session.commit()
 
 
+def _seed_tickets(engine, telegram_user_id: int, count: int) -> None:
+    with Session(engine) as session:
+        currency.add(session, telegram_user_id, CurrencyType.STANDARD_TICKET, count)
+        session.commit()
+
+
+def _seed_roster_and_rich_player(engine, telegram_user_id: int = 1) -> None:
+    """Roster + a Ley-Shards-rich player, deliberately with NO ticket
+    balance — used by the confirm/cancel tests, which want the
+    ley-shards-direct-spend path to be reachable."""
+    _seed_roster(engine)
+    _seed_player(engine, telegram_user_id=telegram_user_id)
+
+
 def _make_update(
     *,
     user_id: int = 1,
@@ -109,6 +132,20 @@ def _make_update(
     message.reply_text = AsyncMock()
     message.reply_photo = AsyncMock()
     update.effective_message = message
+    return update
+
+
+def _make_callback_update(*, clicking_user_id: int, data: str) -> MagicMock:
+    update = MagicMock()
+    update.effective_user.id = clicking_user_id
+    query = MagicMock()
+    query.data = data
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.message = MagicMock()
+    query.message.reply_photo = AsyncMock()
+    query.message.reply_text = AsyncMock()
+    update.callback_query = query
     return update
 
 
@@ -138,6 +175,7 @@ class TestPullCommand:
     async def test_successful_pull_replies_with_a_photo_card(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
+        _seed_tickets(engine, 1, 1)
         update = _make_update()
         context = _make_context()
 
@@ -166,6 +204,7 @@ class TestPullCommand:
 
     async def test_empty_roster_replies_with_a_helpful_message(self, engine):
         _seed_player(engine)
+        _seed_tickets(engine, 1, 1)
         update = _make_update()
         context = _make_context()
 
@@ -192,6 +231,7 @@ class TestPullTenCommand:
     async def test_successful_pull_ten_sends_a_summary(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
+        _seed_tickets(engine, 1, 10)
         update = _make_update()
         context = _make_context()
 
@@ -312,6 +352,7 @@ class TestRarePullGroupAnnouncement:
     async def test_pull_command_announces_a_guaranteed_five_star(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
+        _seed_tickets(engine, 1, 1)
         _seed_hard_pity(engine, banner_type=BannerType.STANDARD)
         update = _make_update(first_name="Aleksey")
         context = _make_context(group_chat_id=-100999, gacha_topic_id=7)
@@ -328,6 +369,7 @@ class TestRarePullGroupAnnouncement:
     async def test_pull_ten_command_announces_the_guaranteed_five_star(self, engine):
         _seed_roster(engine)
         _seed_player(engine)
+        _seed_tickets(engine, 1, 10)
         _seed_hard_pity(engine, banner_type=BannerType.STANDARD)
         update = _make_update(first_name="Aleksey")
         context = _make_context(group_chat_id=-100999, gacha_topic_id=7)
@@ -339,6 +381,93 @@ class TestRarePullGroupAnnouncement:
         for _args, kwargs in context.bot.send_message.call_args_list:
             assert kwargs["chat_id"] == -100999
             assert kwargs["message_thread_id"] == 7
+
+
+class TestPullRequiresConfirmationWithoutATicket:
+    async def test_pull_shows_a_confirm_cancel_keyboard(self, engine):
+        _seed_roster_and_rich_player(engine, 1)  # no ticket seeded
+        update = _make_update(user_id=1)
+        context = MagicMock()
+        context.bot_data = {"config": MagicMock()}
+
+        await gacha_commands.pull_command(update, context)
+
+        update.effective_message.reply_text.assert_awaited_once()
+        (_text,), kwargs = update.effective_message.reply_text.call_args
+        markup = kwargs["reply_markup"]
+        callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+        assert any(cd.startswith("pull:1:single:confirm") for cd in callback_datas)
+        assert any(cd.startswith("pull:1:single:cancel") for cd in callback_datas)
+
+    async def test_pull_ten_shows_a_confirm_cancel_keyboard(self, engine):
+        _seed_roster_and_rich_player(engine, 1)
+        update = _make_update(user_id=1)
+        context = MagicMock()
+        context.bot_data = {"config": MagicMock()}
+
+        await gacha_commands.pull_ten_command(update, context)
+
+        (_text,), kwargs = update.effective_message.reply_text.call_args
+        markup = kwargs["reply_markup"]
+        callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+        assert any(cd.startswith("pull:1:ten:confirm") for cd in callback_datas)
+
+
+class TestPullConfirmationCallback:
+    async def test_owner_confirms_a_single_pull(self, engine):
+        _seed_roster_and_rich_player(engine, 1)
+        update = _make_callback_update(clicking_user_id=1, data="pull:1:single:confirm")
+        context = MagicMock()
+        context.bot_data = {"config": MagicMock()}
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        update.callback_query.edit_message_text.assert_awaited_once()
+        update.callback_query.message.reply_photo.assert_awaited_once()
+
+    async def test_owner_cancels(self, engine):
+        _seed_roster_and_rich_player(engine, 1)
+        update = _make_callback_update(clicking_user_id=1, data="pull:1:single:cancel")
+        context = MagicMock()
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        update.callback_query.edit_message_text.assert_awaited_once()
+        (text,), _ = update.callback_query.edit_message_text.call_args
+        assert "cancel" in text.lower()
+        update.callback_query.message.reply_photo.assert_not_called()
+
+    async def test_rejects_a_different_user_clicking_confirm(self, engine):
+        _seed_roster_and_rich_player(engine, 1)
+        update = _make_callback_update(clicking_user_id=2, data="pull:1:single:confirm")
+        context = MagicMock()
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        update.callback_query.edit_message_text.assert_not_called()
+        _args, kwargs = update.callback_query.answer.call_args
+        assert kwargs.get("show_alert") is True
+
+    async def test_ignores_malformed_callback_data(self, engine):
+        update = _make_callback_update(clicking_user_id=1, data="not-a-real-payload")
+        context = MagicMock()
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        update.callback_query.edit_message_text.assert_not_called()
+
+    async def test_confirm_with_now_insufficient_ley_shards(self, engine):
+        # seed a player with 0 ley_shards and no tickets
+        with Session(engine) as session:
+            session.add(Player(telegram_user_id=1, ley_shards=0))
+            session.commit()
+        update = _make_callback_update(clicking_user_id=1, data="pull:1:single:confirm")
+        context = MagicMock()
+
+        await gacha_commands.pull_confirmation_callback(update, context)
+
+        (text,), _ = update.callback_query.edit_message_text.call_args
+        assert "Not enough Ley Shards" in text
 
 
 class TestFormatOutcomeLine:
