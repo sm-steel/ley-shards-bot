@@ -1,4 +1,10 @@
-"""Ownership: which characters a player has, and how many copies."""
+"""Ownership: which characters a player has, and their constellation
+progress. copies_owned is constellation progress, not a raw duplicate
+count: 1 = constellation 0 (base character, unlocked/unenhanced), each
+additional copy up to 7 total advances one constellation level (max
+constellation 6). See GACHA.md's "Duplicates: constellations,
+refinement, then Echoes" for the pull-time logic that enforces this.
+"""
 
 from datetime import datetime
 
