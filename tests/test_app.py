@@ -17,6 +17,7 @@ def _fake_config() -> Config:
     return Config(
         bot_token="123456:fake-token-for-testing",  # noqa: S106 (test fixture, not a real secret)
         gacha_topic_id=1,
+        group_chat_id=-100123,
         admin_user_ids=frozenset({1}),
         telegram_proxy_url=None,
         database_url="sqlite:///:memory:",
