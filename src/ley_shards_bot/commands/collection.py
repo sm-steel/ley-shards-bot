@@ -50,8 +50,11 @@ def _format_page_text(page: Page, total_owned: int) -> str:
     ]
     for owned in page.items:
         stars = RARITY_STARS[owned.character.rarity]
-        copies = f" x{owned.copies_owned}" if owned.copies_owned > 1 else ""
-        lines.append(f"{stars} {owned.character.name}{copies}")
+        # copies_owned is constellation progress (see PlayerCharacter's
+        # docstring): 1 copy = constellation 0 (no suffix shown), each
+        # copy beyond that is one constellation level.
+        constellation = f" C{owned.copies_owned - 1}" if owned.copies_owned > 1 else ""
+        lines.append(f"{stars} {owned.character.name}{constellation}")
     return "\n".join(lines)
 
 

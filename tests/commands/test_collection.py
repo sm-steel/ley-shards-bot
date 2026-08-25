@@ -55,6 +55,26 @@ def _seed_owned_characters(engine, player_id: int, count: int) -> None:
         session.commit()
 
 
+def _seed_owned_character_with_copies(engine, player_id: int, copies_owned: int) -> None:
+    with Session(engine) as session:
+        session.add(Player(telegram_user_id=player_id))
+        session.add(
+            Character(
+                anilist_id=1,
+                name="Alpha",
+                series="Test Series",
+                image_url="https://example.invalid/1.png",
+                rarity=Rarity.THREE_STAR,
+                base_hp=50,
+                base_atk=20,
+                base_def=15,
+                base_spd=30,
+            )
+        )
+        session.add(PlayerCharacter(player_id=player_id, character_id=1, copies_owned=copies_owned))
+        session.commit()
+
+
 def _make_update(*, user_id: int = 1, chat_type: str = "private") -> MagicMock:
     update = MagicMock()
     update.effective_user.id = user_id
@@ -113,6 +133,40 @@ class TestCollectionCommand:
         buttons = [b for row in markup.inline_keyboard for b in row]
         assert any("Next" in b.text for b in buttons)
         assert not any("Prev" in b.text for b in buttons)
+
+    async def test_shows_no_constellation_suffix_for_a_single_copy(self, engine):
+        _seed_owned_character_with_copies(engine, 1, copies_owned=1)
+        update = _make_update(user_id=1)
+        context = MagicMock()
+
+        await collection_commands.collection_command(update, context)
+
+        (text,), _kwargs = update.effective_message.reply_text.call_args
+        assert "C" not in text.split("\n")[1]
+
+    async def test_shows_constellation_level_for_a_leveled_character(self, engine):
+        _seed_owned_character_with_copies(engine, 1, copies_owned=4)
+        update = _make_update(user_id=1)
+        context = MagicMock()
+
+        await collection_commands.collection_command(update, context)
+
+        (text,), _kwargs = update.effective_message.reply_text.call_args
+        assert "C3" in text
+
+    async def test_a_maxed_character_shows_c6_never_c7(self, engine):
+        """Boundary test: 7 copies (CONSTELLATION_MAX_COPIES, fully
+        maxed) must display "C6" — the highest valid level — never
+        "C7"."""
+        _seed_owned_character_with_copies(engine, 1, copies_owned=7)
+        update = _make_update(user_id=1)
+        context = MagicMock()
+
+        await collection_commands.collection_command(update, context)
+
+        (text,), _kwargs = update.effective_message.reply_text.call_args
+        assert "C6" in text
+        assert "C7" not in text
 
     async def test_rejects_outside_dm(self, engine):
         _seed_owned_characters(engine, 1, count=3)
