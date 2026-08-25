@@ -45,20 +45,35 @@ def _rate_up_note(outcome: gacha.PullOutcome) -> str:
     return ""
 
 
+def _duplicate_status_line(outcome: gacha.PullOutcome) -> str:
+    if outcome.is_new:
+        return "NEW"
+    if outcome.constellation_level is not None:
+        return f"Constellation {outcome.constellation_level}!"
+    return f"dupe, +{outcome.echoes_gained} Echoes"
+
+
 def _format_outcome_line(outcome: gacha.PullOutcome) -> str:
     stars = RARITY_STARS[outcome.rarity]
-    status = "NEW" if outcome.is_new else f"dupe, +{outcome.echoes_gained} Echoes"
     return (
         f"{stars} {outcome.character.name} — {outcome.character.series} "
-        f"[{status}]{_rate_up_note(outcome)}"
+        f"[{_duplicate_status_line(outcome)}]{_rate_up_note(outcome)}"
     )
+
+
+def _duplicate_status_caption(outcome: gacha.PullOutcome) -> str:
+    if outcome.is_new:
+        return "✨ NEW!"
+    if outcome.constellation_level is not None:
+        return f"⭐ Constellation {outcome.constellation_level}!"
+    return f"Duplicate — +{outcome.echoes_gained} Echoes"
 
 
 def _format_single_caption(outcome: gacha.PullOutcome) -> str:
     lines = [
         f"{RARITY_STARS[outcome.rarity]} {outcome.character.name}",
         outcome.character.series,
-        "✨ NEW!" if outcome.is_new else f"Duplicate — +{outcome.echoes_gained} Echoes",
+        _duplicate_status_caption(outcome),
     ]
     note = _rate_up_note(outcome)
     if note:

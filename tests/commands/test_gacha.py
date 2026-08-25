@@ -339,3 +339,37 @@ class TestRarePullGroupAnnouncement:
         for _args, kwargs in context.bot.send_message.call_args_list:
             assert kwargs["chat_id"] == -100999
             assert kwargs["message_thread_id"] == 7
+
+
+class TestFormatOutcomeLine:
+    def test_new_character(self):
+        outcome = _make_outcome(Rarity.THREE_STAR, is_new=True)
+
+        assert "[NEW]" in gacha_commands._format_outcome_line(outcome)
+
+    def test_constellation_level_up(self):
+        outcome = _make_outcome(Rarity.THREE_STAR, is_new=False, constellation_level=3)
+
+        assert "[Constellation 3!]" in gacha_commands._format_outcome_line(outcome)
+
+    def test_echoes_conversion(self):
+        outcome = _make_outcome(Rarity.FIVE_STAR, is_new=False, echoes_gained=50)
+
+        assert "[dupe, +50 Echoes]" in gacha_commands._format_outcome_line(outcome)
+
+
+class TestFormatSingleCaption:
+    def test_new_character(self):
+        outcome = _make_outcome(Rarity.THREE_STAR, is_new=True)
+
+        assert "✨ NEW!" in gacha_commands._format_single_caption(outcome)
+
+    def test_constellation_level_up(self):
+        outcome = _make_outcome(Rarity.THREE_STAR, is_new=False, constellation_level=6)
+
+        assert "⭐ Constellation 6!" in gacha_commands._format_single_caption(outcome)
+
+    def test_echoes_conversion(self):
+        outcome = _make_outcome(Rarity.FOUR_STAR, is_new=False, echoes_gained=15)
+
+        assert "Duplicate — +15 Echoes" in gacha_commands._format_single_caption(outcome)
