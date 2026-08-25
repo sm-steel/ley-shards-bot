@@ -21,7 +21,7 @@ from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
+from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat, is_admin
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
 from ley_shards_bot.services.players import find_player_by_username
@@ -31,15 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.orm import Session
-
-
-def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    config = context.bot_data["config"]
-    user = update.effective_user
-    is_admin = user is not None and user.id in config.admin_user_ids
-    if user is not None and not is_admin:
-        logger.warning("Non-admin {} attempted an admin-only economy command", user.id)
-    return is_admin
 
 
 def _replied_to_user_id(update: Update) -> int | None:
@@ -158,7 +149,7 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.debug(
         "/award_guess from {}", update.effective_user.id if update.effective_user else None
     )
-    if not _is_admin(update, context):
+    if not is_admin(update, context):
         await message.reply_text("Admins only.")
         return
 
@@ -210,7 +201,7 @@ async def _execute_amount_command(
     logger.debug(
         "{} from {}", spec.command, update.effective_user.id if update.effective_user else None
     )
-    if not _is_admin(update, context):
+    if not is_admin(update, context):
         await message.reply_text("Admins only.")
         return
 

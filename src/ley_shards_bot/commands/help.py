@@ -14,6 +14,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from ley_shards_bot.commands.helpers.menu import ADMIN_COMMANDS, PLAYER_COMMANDS
+from ley_shards_bot.commands.helpers.scoping import is_admin
 
 if TYPE_CHECKING:
     from telegram import BotCommand
@@ -28,11 +29,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if message is None:
         return
 
-    config = context.bot_data["config"]
-    user = update.effective_user
-    is_admin = user is not None and user.id in config.admin_user_ids
-
     sections = [_format_commands(PLAYER_COMMANDS)]
-    if is_admin:
+    if is_admin(update, context):
         sections.append(_format_commands(ADMIN_COMMANDS))
     await message.reply_text("\n\n".join(sections))
