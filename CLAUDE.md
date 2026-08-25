@@ -153,6 +153,21 @@ the same commit, that's a bug in the CI setup (a version/config drift
 between local and CI) worth fixing directly, not something to route
 around by re-running or ignoring.
 
+### LSP access (cclsp)
+
+A `cclsp` MCP server (github.com/ktnyt/cclsp) is registered at
+**project** scope via the committed `.mcp.json`, so it's available in
+any Claude Code session opened in this repo, on any machine — not tied
+to one machine's local config. It gives real LSP-backed
+go-to-definition/find-references/hover instead of Grep text search.
+Config is the committed `cclsp.json` at the repo root, pointing
+`.py`/`.pyi` files at `uv run ty server` — `ty`'s own built-in LSP mode,
+already a project dependency, so this adds no new Python tooling and its
+diagnostics match `ty check`/CI exactly. Since `.mcp.json` is
+repo-committed, Claude Code requires a one-time approval per machine the
+first time a session opens here (`claude mcp list` shows "Pending
+approval" until then) — a deliberate trust gate, not a bug.
+
 ## Logging
 
 Uses **loguru** (`from loguru import logger`) everywhere, not stdlib
