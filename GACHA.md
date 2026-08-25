@@ -52,19 +52,21 @@ All three cost 160 Ley Shards each via
 single pull, just paid in advance.
 
 **Spending a ticket is instant; spending Ley Shards directly always asks
-first.** `/pull`/`/pull10` spend an existing matching ticket automatically (today, that's always the standard ticket — see the Status table's footnote above) — that Ley Shards commitment already happened when the ticket was
-bought, so there's nothing left to confirm. But whenever a pull would
-draw on Ley Shards *directly* — no matching ticket at all for a single
-pull, or not enough tickets to cover every pull in a 10-pull — the bot
-shows an explicit confirm/cancel prompt before spending anything,
+first.** `/pull`/`/pull10` spend an existing matching ticket automatically
+(today, that's always the standard ticket — see the Status table's
+footnote above) — that Ley Shards commitment already happened when the
+ticket was bought, so there's nothing left to confirm. But whenever a pull
+would draw on Ley Shards *directly* — no matching ticket at all for a
+single pull, or not enough tickets to cover every pull in a 10-pull — the
+bot shows an explicit confirm/cancel prompt before spending anything,
 framed as converting that Ley Shards amount into the ticket(s) needed to
-complete the pull. Ley Shards are the general-purpose base currency and
-may pick up other uses later (a future Phase 2 system, say) — locking
-some of it into a single-banner-type ticket is a real choice for the
-player to make, not something to spend on their behalf silently. For a
-10-pull with some tickets already in hand, the prompt only covers the
-*shortfall* (e.g. 4 tickets owned + 6 needed = spend the 4 instantly,
-confirm converting Ley Shards for the other 6), not the whole batch.
+complete the pull. Ley Shards are the general-purpose base currency and may
+pick up other uses later (a future Phase 2 system, say) — locking some of
+it into a single-banner-type ticket is a real choice for the player to
+make, not something to spend on their behalf silently. For a 10-pull with
+some tickets already in hand, the prompt only covers the *shortfall* (e.g.
+4 tickets owned + 6 needed = spend the 4 instantly, confirm converting Ley
+Shards for the other 6), not the whole batch.
 
 ## Banners
 

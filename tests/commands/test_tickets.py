@@ -89,6 +89,26 @@ class TestBuyTicketCommand:
         assert "2" in text
         assert "standard" in text.lower()
 
+    async def test_buys_event_tickets_with_a_not_yet_spendable_caveat(self, engine):
+        _seed_player(engine)
+        update = _make_update()
+        context = _make_context(["event", "1"])
+
+        await tickets_commands.buy_ticket_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "can't be spent yet" in text.lower()
+
+    async def test_standard_ticket_purchase_has_no_caveat(self, engine):
+        _seed_player(engine)
+        update = _make_update()
+        context = _make_context(["standard", "1"])
+
+        await tickets_commands.buy_ticket_command(update, context)
+
+        (text,), _ = update.effective_message.reply_text.call_args
+        assert "can't be spent yet" not in text.lower()
+
     async def test_rejects_an_invalid_ticket_type(self, engine):
         _seed_player(engine)
         update = _make_update()

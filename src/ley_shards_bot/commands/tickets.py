@@ -24,7 +24,7 @@ async def _parse_ticket_request(message: Message, args: list[str]) -> tuple[Bann
     """Validates `/buy_ticket`'s args, replying (and returning None) on the
     first problem found — mirrors `commands/helpers/targeting.resolve_target`'s
     reply-then-None-sentinel shape so the caller just checks for None."""
-    if len(args) != 2 or not args[1].isdigit():
+    if len(args) != 2 or not args[1].isdecimal():
         await message.reply_text(_USAGE)
         return None
     try:
@@ -65,6 +65,10 @@ async def buy_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await message.reply_text(str(exc))
             return
 
-    await message.reply_text(
-        f"Bought {count} {ticket_type.value} ticket(s) (balance: {new_balance})."
-    )
+    reply = f"Bought {count} {ticket_type.value} ticket(s) (balance: {new_balance})."
+    if ticket_type is BannerType.EVENT:
+        reply += (
+            " Heads up: event tickets can't be spent yet — banner selection for "
+            "/pull is coming later."
+        )
+    await message.reply_text(reply)

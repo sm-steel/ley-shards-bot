@@ -98,9 +98,12 @@ def build_application(config: Config) -> Application:
         MessageHandler(filters.ChatType.GROUPS, trickle_message_handler), group=1
     )
 
+    command_handler_count = sum(
+        isinstance(handler, CommandHandler) for handler in application.handlers[0]
+    )
     logger.info(
         "Registered {} command(s), 2 callback handlers, 1 trickle handler",
-        len(application.handlers[0]) - 1,
+        command_handler_count,
     )
     return application
 
