@@ -18,7 +18,7 @@ that's deliberately not repeated here.
 | Characters: rarity, placeholder base stats | **Implemented** (Phase 1) |
 | Character `description`/tags (AniList-sourced) | Planned (Phase 1.1) |
 | Standard/event banner tickets | Planned (Phase 1.1) |
-| Constellations (character duplicate leveling) | Planned (Phase 1.1) |
+| Constellations (character duplicate leveling) | **Implemented** (Phase 1.1) |
 | Weapons: rarity, `weapon_type`, base stats | Planned (Phase 1.2) |
 | `characters.role`/`element`, admin stat editing | Planned (Phase 1.2) |
 | Refinement (weapon duplicate leveling), weapon ticket | Planned (Phase 1.2) |
@@ -85,7 +85,7 @@ that point rather than it being computed. See `ARCHITECTURE.md`'s
 | tags | Planned (Phase 1.1) | AniList's genre/tag-ish data, stored as simple JSON/text rather than a relational tags model — no "filter by tag" requirement exists yet to justify more (YAGNI). |
 | `role`, `element` | Planned (Phase 1.2) | New enum columns. Exact taxonomy (which roles, which elements) is undecided — TBD when that ticket is picked up. |
 | `base_hp`/`base_atk`/`base_def`/`base_spd` | Implemented (placeholder) | Auto-derived deterministically at import today, purely as a forward-compatible placeholder — see `ARCHITECTURE.md`'s Roadmap. No gameplay reads these yet; that's Phase 2 (combat). Admin-editable from Phase 1.2 on, alongside `rarity`/`role`/`element`. |
-| Constellations | Planned (Phase 1.1) | 6 levels; how a character gains them is a *pull* mechanic — see `GACHA.md`'s "Duplicates: constellations, refinement, then Echoes". What each level actually **grants** (passive abilities) is Phase 2's job, once combat design exists — this phase only builds the counter. |
+| Constellations | Implemented (Phase 1.1) | 6 levels; how a character gains them is a *pull* mechanic — see `GACHA.md`'s "Duplicates: constellations, refinement, then Echoes". What each level actually **grants** (passive abilities) is Phase 2's job, once combat design exists — this phase only builds the counter. |
 
 ## Weapons (Phase 1.2)
 

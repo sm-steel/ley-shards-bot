@@ -65,6 +65,14 @@ ECHOES_PER_DUPLICATE: dict[Rarity, int] = {
     Rarity.FIVE_STAR: 50,
 }
 
+# A character's first copy is constellation 0 (unlocked, unenhanced). Each
+# subsequent duplicate advances one constellation level, up to 6 — so 7
+# total copies (1 base + 6 levels) fully constellates a character. Only
+# once a player already owns this many copies does a further duplicate
+# convert to Echoes instead of leveling anything further. See GACHA.md's
+# "Duplicates: constellations, refinement, then Echoes" section.
+CONSTELLATION_MAX_COPIES = 7
+
 
 class InsufficientLeyShardsError(Exception):
     def __init__(self, required: int, available: int) -> None:
@@ -84,6 +92,11 @@ class PullOutcome:
     rarity: Rarity
     is_new: bool
     echoes_gained: int
+    # The level just reached (1-6) on a duplicate-into-level-up pull;
+    # None on a first-copy pull or on an Echoes-conversion pull (already
+    # at CONSTELLATION_MAX_COPIES). At most one of
+    # is_new/constellation_level/echoes_gained is "set" for any outcome.
+    constellation_level: int | None
     is_rate_up: bool | None  # None unless this was an event-banner 5-star
 
 
@@ -176,19 +189,29 @@ def _characters_of_rarity(session: Session, rarity: Rarity) -> list[Character]:
     return list(session.scalars(select(Character).where(Character.rarity == rarity)))
 
 
-def _grant_character(session: Session, player_id: int, character: Character) -> tuple[bool, int]:
-    """Add a copy to the player's collection, or convert the duplicate to
-    Echoes. Returns (is_new, echoes_gained)."""
+def _grant_character(
+    session: Session, player_id: int, character: Character
+) -> tuple[bool, int | None, int]:
+    """Add a copy to the player's collection: a brand-new character, a
+    constellation level-up (2nd through 7th copy), or — once already at
+    the CONSTELLATION_MAX_COPIES cap — a duplicate converted to Echoes
+    instead. Returns (is_new, constellation_level, echoes_gained); at
+    most one of constellation_level/echoes_gained is set, and neither is
+    set when is_new is True."""
     ownership = session.get(PlayerCharacter, (player_id, character.anilist_id))
     if ownership is None:
         session.add(PlayerCharacter(player_id=player_id, character_id=character.anilist_id))
-        return True, 0
+        return True, None, 0
 
-    ownership.copies_owned += 1
+    if ownership.copies_owned < CONSTELLATION_MAX_COPIES:
+        ownership.copies_owned += 1
+        constellation_level = ownership.copies_owned - 1
+        return False, constellation_level, 0
+
     echoes = ECHOES_PER_DUPLICATE[character.rarity]
     player = get_or_create_player(session, player_id)
     player.echoes += echoes
-    return False, echoes
+    return False, None, echoes
 
 
 def _execute_single_pull(
@@ -229,7 +252,7 @@ def _execute_single_pull(
     if character is None:
         character = pick_character(_characters_of_rarity(session, rarity), rng)
 
-    is_new, echoes_gained = _grant_character(session, player_id, character)
+    is_new, constellation_level, echoes_gained = _grant_character(session, player_id, character)
     session.add(
         Pull(
             player_id=player_id,
@@ -244,6 +267,7 @@ def _execute_single_pull(
         rarity=rarity,
         is_new=is_new,
         echoes_gained=echoes_gained,
+        constellation_level=constellation_level,
         is_rate_up=is_rate_up,
     )
 
@@ -268,12 +292,13 @@ def pull_single(
     outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
     session.commit()
     logger.info(
-        "Pull: player={} banner={} -> {} {} (new={}, echoes={}, rate_up={})",
+        "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={})",
         player.telegram_user_id,
         banner.type,
         outcome.rarity,
         outcome.character.name,
         outcome.is_new,
+        outcome.constellation_level,
         outcome.echoes_gained,
         outcome.is_rate_up,
     )
