@@ -184,8 +184,12 @@ class TestAwardGuessCommand:
         (text,), _ = update.effective_message.reply_text.call_args
         assert "reply" in text.lower()
 
-    async def test_admin_awards_the_replied_to_user(self, engine):
-        update = _make_update(user_id=1, replied_user_id=5)
+    @pytest.mark.parametrize("chat_type", ["private", "group"])
+    async def test_admin_awards_the_replied_to_user(self, engine, chat_type):
+        # Admin commands are never topic/DM-scoped (unlike /pull, /pull10,
+        # /daily) — see ARCHITECTURE.md's "Commands & topics" section and
+        # issue #19. Same outcome in a DM or the group.
+        update = _make_update(user_id=1, replied_user_id=5, chat_type=chat_type)
         context = _make_context(admin_ids=frozenset({1}))
 
         await economy_commands.award_guess_command(update, context)
@@ -275,8 +279,11 @@ class TestGrantCommand:
         (text,), _ = update.effective_message.reply_text.call_args
         assert "usage" in text.lower()
 
-    async def test_admin_grants_arbitrary_amount(self, engine):
-        update = _make_update(user_id=1, replied_user_id=5)
+    @pytest.mark.parametrize("chat_type", ["private", "group"])
+    async def test_admin_grants_arbitrary_amount(self, engine, chat_type):
+        # Never topic/DM-scoped — see issue #19. Same outcome in a DM or
+        # the group.
+        update = _make_update(user_id=1, replied_user_id=5, chat_type=chat_type)
         context = _make_context(admin_ids=frozenset({1}), args=["250"])
 
         await economy_commands.grant_command(update, context)
@@ -338,9 +345,12 @@ class TestRevokeCommand:
         (text,), _ = update.effective_message.reply_text.call_args
         assert "usage" in text.lower()
 
-    async def test_admin_revokes_arbitrary_amount(self, engine):
+    @pytest.mark.parametrize("chat_type", ["private", "group"])
+    async def test_admin_revokes_arbitrary_amount(self, engine, chat_type):
+        # Never topic/DM-scoped — see issue #19. Same outcome in a DM or
+        # the group.
         _seed_player(engine, telegram_user_id=5, username="aleksey", ley_shards=250)
-        update = _make_update(user_id=1, replied_user_id=5)
+        update = _make_update(user_id=1, replied_user_id=5, chat_type=chat_type)
         context = _make_context(admin_ids=frozenset({1}), args=["100"])
 
         await economy_commands.revoke_command(update, context)
