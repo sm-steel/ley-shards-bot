@@ -234,6 +234,11 @@ class TestPullCommand:
         update.effective_message.reply_photo.assert_not_called()
         (text,), _ = update.effective_message.reply_text.call_args
         assert "roster" in text.lower()
+        # The failed pull must not have charged the ticket it would have
+        # spent on success (see the currency-debit-before-pull bug this
+        # regression guards against).
+        with Session(engine) as session:
+            assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 1
 
 
 class TestPullTenCommand:

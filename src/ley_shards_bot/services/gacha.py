@@ -189,7 +189,7 @@ class _PullCostPlan:
     ley_shards_required: int
 
 
-def _plan_standard_pull_cost(
+def _plan_pull_cost(
     session: Session, player_id: int, banner: Banner, pull_count: int
 ) -> _PullCostPlan:
     """Ticket-then-Ley-Shards cost split for `pull_count` pulls on the
@@ -332,7 +332,7 @@ def pull_single(
     now = utc_now()
 
     account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    plan = _plan_standard_pull_cost(session, player.telegram_user_id, banner, 1)
+    plan = _plan_pull_cost(session, player.telegram_user_id, banner, 1)
     if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "Pull rejected for {}: need {} Ley Shards, have {}",
@@ -344,13 +344,13 @@ def pull_single(
     if plan.ley_shards_required > 0 and not confirmed_direct_spend:
         raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
 
+    outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
+
     if plan.tickets_to_spend > 0:
         currency.spend(
             session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
         )
     account.ley_shards -= plan.ley_shards_required
-
-    outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
     session.commit()
     logger.info(
         "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={}, "
@@ -386,7 +386,7 @@ def pull_ten(
     now = utc_now()
 
     account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    plan = _plan_standard_pull_cost(session, player.telegram_user_id, banner, TEN_PULL_SIZE)
+    plan = _plan_pull_cost(session, player.telegram_user_id, banner, TEN_PULL_SIZE)
     if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "10-pull rejected for {}: need {} Ley Shards, have {}",
@@ -398,16 +398,16 @@ def pull_ten(
     if plan.ley_shards_required > 0 and not confirmed_direct_spend:
         raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
 
+    outcomes = [
+        _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
+        for _ in range(TEN_PULL_SIZE)
+    ]
+
     if plan.tickets_to_spend > 0:
         currency.spend(
             session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
         )
     account.ley_shards -= plan.ley_shards_required
-
-    outcomes = [
-        _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
-        for _ in range(TEN_PULL_SIZE)
-    ]
     session.commit()
     rarity_counts = Counter(outcome.rarity for outcome in outcomes)
     logger.info(

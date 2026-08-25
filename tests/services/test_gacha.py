@@ -34,6 +34,7 @@ from ley_shards_bot.services.gacha import (
     TEN_PULL_COST_LEY_SHARDS,
     TEN_PULL_SIZE,
     ConfirmationRequiredError,
+    EmptyRarityPoolError,
     InsufficientLeyShardsError,
     five_star_probability,
     get_or_create_standard_banner,
@@ -430,6 +431,36 @@ class TestPullSingle:
 
         assert session.query(Pull).count() == 1
 
+    def test_empty_roster_does_not_spend_a_ticket(self, session):
+        # Deliberately no _seed_roster(session) — an empty roster is what
+        # makes _execute_single_pull raise EmptyRarityPoolError, regardless
+        # of which rarity gets rolled.
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 1)
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(EmptyRarityPoolError):
+            pull_single(session, PlayerRef(1), banner, rng=random.Random(SEED))
+
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 1
+
+    def test_empty_roster_does_not_spend_ley_shards(self, session):
+        _rich_player(session)
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(EmptyRarityPoolError):
+            pull_single(
+                session,
+                PlayerRef(1),
+                banner,
+                rng=random.Random(SEED),
+                confirmed_direct_spend=True,
+            )
+
+        player = session.get(Player, 1)
+        assert player is not None
+        assert player.ley_shards == 100_000
+
 
 class TestPullTen:
     def test_charges_the_ten_pull_cost_once(self, session):
@@ -501,6 +532,29 @@ class TestPullTen:
         player = session.get(Player, 1)
         assert player is not None
         assert player.ley_shards == 100
+
+    def test_empty_roster_does_not_charge_tickets_or_ley_shards(self, session):
+        # Deliberately no _seed_roster(session) — an empty roster makes one
+        # of the ten _execute_single_pull calls raise EmptyRarityPoolError
+        # partway through the batch; nothing should be charged for any of
+        # the ten pulls in that case.
+        _rich_player(session)
+        currency.add(session, 1, CurrencyType.STANDARD_TICKET, 4)
+        banner = get_or_create_standard_banner(session)
+
+        with pytest.raises(EmptyRarityPoolError):
+            pull_ten(
+                session,
+                PlayerRef(1),
+                banner,
+                rng=random.Random(SEED),
+                confirmed_direct_spend=True,
+            )
+
+        assert currency.get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 4
+        player = session.get(Player, 1)
+        assert player is not None
+        assert player.ley_shards == 100_000
 
 
 class TestTicketAwarePullCost:
