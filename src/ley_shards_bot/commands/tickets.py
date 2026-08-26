@@ -7,6 +7,8 @@ here.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from loguru import logger
 from telegram import Message, Update
 from telegram.ext import ContextTypes
@@ -21,7 +23,13 @@ from ley_shards_bot.services.players import PlayerRef
 _USAGE = "Usage: /buy_ticket <standard|event> <count>"
 
 
-async def _parse_ticket_request(message: Message, args: list[str]) -> tuple[BannerType, int] | None:
+@dataclass(frozen=True)
+class TicketRequest:
+    ticket_type: BannerType
+    count: int
+
+
+async def _parse_ticket_request(message: Message, args: list[str]) -> TicketRequest | None:
     """Validates `/buy_ticket`'s args, replying (and returning None) on the
     first problem found — mirrors `commands/helpers/targeting.resolve_target`'s
     reply-then-None-sentinel shape so the caller just checks for None."""
@@ -33,7 +41,7 @@ async def _parse_ticket_request(message: Message, args: list[str]) -> tuple[Bann
     except ValueError:
         await message.reply_text("Ticket type must be 'standard' or 'event'.")
         return None
-    return ticket_type, int(args[1])
+    return TicketRequest(ticket_type, int(args[1]))
 
 
 async def buy_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -50,12 +58,14 @@ async def buy_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     parsed = await _parse_ticket_request(message, context.args or [])
     if parsed is None:
         return
-    ticket_type, count = parsed
 
     with session_scope() as session:
         try:
             new_balance = tickets.buy_tickets(
-                session, PlayerRef(user.id, username=user.username), ticket_type, count
+                session,
+                PlayerRef(user.id, username=user.username),
+                parsed.ticket_type,
+                parsed.count,
             )
         except InsufficientLeyShardsError as exc:
             await message.reply_text(
@@ -66,8 +76,8 @@ async def buy_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await message.reply_text(str(exc))
             return
 
-    reply = f"Bought {count} {ticket_type.value} ticket(s) (balance: {new_balance})."
-    if ticket_type is BannerType.EVENT:
+    reply = f"Bought {parsed.count} {parsed.ticket_type.value} ticket(s) (balance: {new_balance})."
+    if parsed.ticket_type is BannerType.EVENT:
         reply += (
             " Heads up: event tickets can't be spent yet — banner selection for "
             "/pull is coming later."

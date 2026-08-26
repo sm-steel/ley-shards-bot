@@ -20,6 +20,7 @@ module ignorant of any one caller's domain, which is the whole point.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -35,16 +36,36 @@ class ConfirmAction(StrEnum):
     CANCEL = "cancel"
 
 
+@dataclass(frozen=True)
+class ConfirmationRef:
+    """Everything `resolve_confirmation` hands back once a callback click
+    has been validated: who owns it, the message to reply/edit on, and
+    what was being confirmed. `subject` is the caller's opaque token —
+    see the module docstring."""
+
+    owner_id: int
+    message: Message
+    subject: str
+    action: ConfirmAction
+
+
+@dataclass(frozen=True)
+class _ParsedCallbackData:
+    owner_id: int
+    subject: str
+    action: ConfirmAction
+
+
 def callback_data(prefix: str, owner_id: int, subject: str, action: ConfirmAction) -> str:
     return f"{prefix}:{owner_id}:{subject}:{action}"
 
 
-def _parse_callback_data(prefix: str, data: str) -> tuple[int, str, ConfirmAction] | None:
+def _parse_callback_data(prefix: str, data: str) -> _ParsedCallbackData | None:
     parts = data.split(":")
     if len(parts) != 4 or parts[0] != prefix:
         return None
     try:
-        return int(parts[1]), parts[2], ConfirmAction(parts[3])
+        return _ParsedCallbackData(int(parts[1]), parts[2], ConfirmAction(parts[3]))
     except ValueError:
         return None
 
@@ -66,9 +87,7 @@ def build_keyboard(prefix: str, owner_id: int, subject: str) -> InlineKeyboardMa
     )
 
 
-async def resolve_confirmation(
-    update: Update, *, prefix: str
-) -> tuple[int, Message, str, ConfirmAction] | None:
+async def resolve_confirmation(update: Update, *, prefix: str) -> ConfirmationRef | None:
     """Validate and parse a confirm/cancel callback click for the given
     `prefix`: rejects a non-owner click (`show_alert=True`, no edit),
     silently ignores malformed callback_data (bare `query.answer()`, no
@@ -76,8 +95,8 @@ async def resolve_confirmation(
     message itself has gone inaccessible since it was sent — deleted, or
     the bot restarted in between.
 
-    On success, returns `(owner_id, message, subject, action)` —
-    `message` is the now-`isinstance`-narrowed prompt message, safe to
+    On success, returns a `ConfirmationRef` — `message` is the
+    now-`isinstance`-narrowed prompt message, safe to
     `.edit_text()`/`.reply_text()`/`.reply_photo()` on; `subject` is
     whatever opaque token the caller encoded via `callback_data()` (not
     validated against any caller-specific enum here — callers convert
@@ -106,17 +125,18 @@ async def resolve_confirmation(
     if parsed is None:
         await query.answer()
         return None
-    owner_id, subject, action = parsed
 
-    if clicking_user.id != owner_id:
+    if clicking_user.id != parsed.owner_id:
         logger.warning(
             "{} tried to respond to {}'s confirmation (prefix={})",
             clicking_user.id,
-            owner_id,
+            parsed.owner_id,
             prefix,
         )
         await query.answer("This isn't yours to confirm.", show_alert=True)
         return None
     await query.answer()
 
-    return owner_id, message, subject, action
+    return ConfirmationRef(
+        owner_id=parsed.owner_id, message=message, subject=parsed.subject, action=parsed.action
+    )

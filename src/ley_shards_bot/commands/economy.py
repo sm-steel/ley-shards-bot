@@ -97,11 +97,8 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         if resolved is None:
             return
-        target_id, capture_username, _remaining_args = resolved
 
-        result = economy.award_guess(
-            session, PlayerRef(target_id, username=capture_username), today=game_day(utc_now())
-        )
+        result = economy.award_guess(session, resolved.player, today=game_day(utc_now()))
 
     if result.granted:
         text = f"+{result.amount} Ley Shards awarded ({result.awards_remaining_today} more today)."
@@ -152,8 +149,8 @@ async def _execute_amount_command(
         )
         if resolved is None:
             return
-        target_id, capture_username, amount_args = resolved
 
+        amount_args = resolved.remaining_args
         if not amount_args or not amount_args[0].lstrip("-").isdigit():
             await message.reply_text(
                 f"Usage: reply to the player with {spec.command} <amount>, "
@@ -163,9 +160,7 @@ async def _execute_amount_command(
         amount = int(amount_args[0])
 
         try:
-            new_balance = spec.apply(
-                session, PlayerRef(target_id, username=capture_username), amount
-            )
+            new_balance = spec.apply(session, resolved.player, amount)
         except ValueError as exc:
             logger.debug("{} rejected: {}", spec.command, exc)
             await message.reply_text(str(exc))

@@ -147,27 +147,40 @@ def roll_rarity(
     return Rarity.THREE_STAR
 
 
+@dataclass(frozen=True)
+class PityCounts:
+    pulls_since_last_5star: int
+    pulls_since_last_4star: int
+
+
 def next_pity_counts(
     pulls_since_last_5star: int, pulls_since_last_4star: int, rarity: Rarity
-) -> tuple[int, int]:
+) -> PityCounts:
     """Pity counters after a pull of the given rarity. A 5-star resets
     both (it's also "4-star or better"); a 4-star resets only its own."""
     if rarity == Rarity.FIVE_STAR:
-        return 0, 0
+        return PityCounts(0, 0)
     if rarity == Rarity.FOUR_STAR:
-        return pulls_since_last_5star + 1, 0
-    return pulls_since_last_5star + 1, pulls_since_last_4star + 1
+        return PityCounts(pulls_since_last_5star + 1, 0)
+    return PityCounts(pulls_since_last_5star + 1, pulls_since_last_4star + 1)
 
 
-def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> tuple[bool, bool]:
-    """The classic 50/50: returns (is_rate_up, guaranteed_rate_up_next_time).
-    A prior loss (guaranteed_rate_up=True coming in) always wins this time
-    and clears the flag; otherwise it's a coin flip, and losing sets the
-    flag for the banner's next 5-star."""
+@dataclass(frozen=True)
+class FiftyFiftyResult:
+    is_rate_up: bool
+    guaranteed_rate_up_next: bool
+
+
+def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> FiftyFiftyResult:
+    """The classic 50/50: is this pull the rate-up character, and is the
+    banner's *next* 5-star now guaranteed to be? A prior loss
+    (guaranteed_rate_up=True coming in) always wins this time and clears
+    the flag; otherwise it's a coin flip, and losing sets the flag for
+    the banner's next 5-star."""
     if guaranteed_rate_up:
-        return True, False
+        return FiftyFiftyResult(is_rate_up=True, guaranteed_rate_up_next=False)
     won = rng.random() < 0.5
-    return won, not won
+    return FiftyFiftyResult(is_rate_up=won, guaranteed_rate_up_next=not won)
 
 
 def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
@@ -237,29 +250,36 @@ def _characters_of_rarity(session: Session, rarity: Rarity) -> list[Character]:
     return list(session.scalars(select(Character).where(Character.rarity == rarity)))
 
 
-def _grant_character(
-    session: Session, player_id: int, character: Character
-) -> tuple[bool, int | None, int]:
+@dataclass(frozen=True)
+class GrantResult:
+    is_new: bool
+    # The level just reached (1-6) on a duplicate-into-level-up grant;
+    # None on a first-copy grant or on an Echoes-conversion grant. At
+    # most one of constellation_level/echoes_gained is set, and neither
+    # is set when is_new is True.
+    constellation_level: int | None
+    echoes_gained: int
+
+
+def _grant_character(session: Session, player_id: int, character: Character) -> GrantResult:
     """Add a copy to the player's collection: a brand-new character, a
     constellation level-up (2nd through 7th copy), or — once already at
     the CONSTELLATION_MAX_COPIES cap — a duplicate converted to Echoes
-    instead. Returns (is_new, constellation_level, echoes_gained); at
-    most one of constellation_level/echoes_gained is set, and neither is
-    set when is_new is True."""
+    instead."""
     ownership = session.get(PlayerCharacter, (player_id, character.anilist_id))
     if ownership is None:
         session.add(PlayerCharacter(player_id=player_id, character_id=character.anilist_id))
-        return True, None, 0
+        return GrantResult(is_new=True, constellation_level=None, echoes_gained=0)
 
     if ownership.copies_owned < CONSTELLATION_MAX_COPIES:
         ownership.copies_owned += 1
         constellation_level = ownership.copies_owned - 1
-        return False, constellation_level, 0
+        return GrantResult(is_new=False, constellation_level=constellation_level, echoes_gained=0)
 
     echoes = ECHOES_PER_DUPLICATE[character.rarity]
     player = get_or_create_player(session, PlayerRef(player_id))
     player.echoes += echoes
-    return False, None, echoes
+    return GrantResult(is_new=False, constellation_level=None, echoes_gained=echoes)
 
 
 def _execute_single_pull(
@@ -275,9 +295,9 @@ def _execute_single_pull(
         pity.pulls_since_last_4star,
     )
     rarity = roll_rarity(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rng)
-    pity.pulls_since_last_5star, pity.pulls_since_last_4star = next_pity_counts(
-        pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity
-    )
+    next_counts = next_pity_counts(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity)
+    pity.pulls_since_last_5star = next_counts.pulls_since_last_5star
+    pity.pulls_since_last_4star = next_counts.pulls_since_last_4star
 
     is_event_five_star = (
         banner.type == BannerType.EVENT
@@ -287,7 +307,9 @@ def _execute_single_pull(
     is_rate_up: bool | None = None
     character: Character | None = None
     if is_event_five_star:
-        is_rate_up, pity.guaranteed_rate_up = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        fifty_fifty = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        is_rate_up = fifty_fifty.is_rate_up
+        pity.guaranteed_rate_up = fifty_fifty.guaranteed_rate_up_next
         logger.debug(
             "Event 50/50 for player={}: is_rate_up={} guaranteed_next={}",
             player_id,
@@ -300,7 +322,7 @@ def _execute_single_pull(
     if character is None:
         character = pick_character(_characters_of_rarity(session, rarity), rng)
 
-    is_new, constellation_level, echoes_gained = _grant_character(session, player_id, character)
+    grant_result = _grant_character(session, player_id, character)
     session.add(
         Pull(
             player_id=player_id,
@@ -313,9 +335,9 @@ def _execute_single_pull(
     return PullOutcome(
         character=character,
         rarity=rarity,
-        is_new=is_new,
-        echoes_gained=echoes_gained,
-        constellation_level=constellation_level,
+        is_new=grant_result.is_new,
+        echoes_gained=grant_result.echoes_gained,
+        constellation_level=grant_result.constellation_level,
         is_rate_up=is_rate_up,
     )
 

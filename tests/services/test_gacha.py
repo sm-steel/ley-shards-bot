@@ -36,6 +36,7 @@ from ley_shards_bot.services.gacha import (
     ConfirmationRequiredError,
     EmptyRarityPoolError,
     InsufficientLeyShardsError,
+    PityCounts,
     five_star_probability,
     get_or_create_standard_banner,
     next_pity_counts,
@@ -112,22 +113,22 @@ class TestRollRarityStatistics:
         max_gap = 0
         for _ in range(50_000):
             rarity = roll_rarity(pulls_since_5star, pulls_since_4star, rng)
-            pulls_since_5star, pulls_since_4star = next_pity_counts(
-                pulls_since_5star, pulls_since_4star, rarity
-            )
+            next_counts = next_pity_counts(pulls_since_5star, pulls_since_4star, rarity)
+            pulls_since_5star = next_counts.pulls_since_last_5star
+            pulls_since_4star = next_counts.pulls_since_last_4star
             max_gap = max(max_gap, pulls_since_4star)
         assert max_gap < FOUR_STAR_HARD_PITY
 
 
 class TestNextPityCounts:
     def test_five_star_resets_both_counters(self):
-        assert next_pity_counts(50, 5, Rarity.FIVE_STAR) == (0, 0)
+        assert next_pity_counts(50, 5, Rarity.FIVE_STAR) == PityCounts(0, 0)
 
     def test_four_star_resets_only_four_star_counter(self):
-        assert next_pity_counts(50, 5, Rarity.FOUR_STAR) == (51, 0)
+        assert next_pity_counts(50, 5, Rarity.FOUR_STAR) == PityCounts(51, 0)
 
     def test_three_star_increments_both_counters(self):
-        assert next_pity_counts(50, 5, Rarity.THREE_STAR) == (51, 6)
+        assert next_pity_counts(50, 5, Rarity.THREE_STAR) == PityCounts(51, 6)
 
 
 # ---------------------------------------------------------------------------
@@ -139,19 +140,19 @@ class TestResolveEventFiveStar:
     def test_guaranteed_flag_always_wins_rate_up(self):
         rng = random.Random(SEED)
         for _ in range(1000):
-            is_rate_up, next_guaranteed = resolve_event_five_star(True, rng)
-            assert is_rate_up is True
-            assert next_guaranteed is False
+            result = resolve_event_five_star(True, rng)
+            assert result.is_rate_up is True
+            assert result.guaranteed_rate_up_next is False
 
     def test_losing_sets_guaranteed_flag_for_next_time(self):
         rng = random.Random(SEED)
         results = [resolve_event_five_star(False, rng) for _ in range(2000)]
-        for is_rate_up, next_guaranteed in results:
-            assert next_guaranteed == (not is_rate_up)
+        for result in results:
+            assert result.guaranteed_rate_up_next == (not result.is_rate_up)
 
     def test_fifty_fifty_converges_near_half(self):
         rng = random.Random(SEED)
-        outcomes = [resolve_event_five_star(False, rng)[0] for _ in range(50_000)]
+        outcomes = [resolve_event_five_star(False, rng).is_rate_up for _ in range(50_000)]
         rate_up_rate = sum(outcomes) / len(outcomes)
         assert rate_up_rate == pytest.approx(0.5, abs=0.02)
 

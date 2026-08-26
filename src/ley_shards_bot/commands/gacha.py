@@ -303,20 +303,19 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
     resolved = await confirmation.resolve_confirmation(update, prefix=_CALLBACK_PREFIX)
     if resolved is None:
         return
-    owner_id, message, subject, action = resolved
 
     try:
-        pull_type = _PullType(subject)
+        pull_type = _PullType(resolved.subject)
     except ValueError:
         # Can't happen from a button this module itself built, but the
         # subject is an opaque string as far as resolve_confirmation is
         # concerned — validate it back out defensively rather than trust
         # it.
-        logger.warning("pull confirmation carried an unknown pull_type {!r}", subject)
+        logger.warning("pull confirmation carried an unknown pull_type {!r}", resolved.subject)
         return
 
-    if action == confirmation.ConfirmAction.CANCEL:
-        await message.edit_text("Cancelled — no Ley Shards spent.")
+    if resolved.action == confirmation.ConfirmAction.CANCEL:
+        await resolved.message.edit_text("Cancelled — no Ley Shards spent.")
         return
 
     clicking_user = update.effective_user
@@ -325,8 +324,8 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
     ctx = _ConfirmedPullContext(
         context=context,
         clicking_user=clicking_user,
-        message=message,
-        player=PlayerRef(owner_id),
+        message=resolved.message,
+        player=PlayerRef(resolved.owner_id),
     )
     if pull_type == _PullType.SINGLE:
         await _confirm_single_pull(ctx)

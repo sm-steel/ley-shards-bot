@@ -127,11 +127,10 @@ class TestResolveConfirmation:
         result = await resolve_confirmation(update, prefix=_PREFIX)
 
         assert result is not None
-        owner_id, message, subject, action = result
-        assert owner_id == 1
-        assert message is update.callback_query.message
-        assert subject == "widget"
-        assert action == ConfirmAction.CONFIRM
+        assert result.owner_id == 1
+        assert result.message is update.callback_query.message
+        assert result.subject == "widget"
+        assert result.action == ConfirmAction.CONFIRM
         update.callback_query.answer.assert_awaited_once_with()
 
     async def test_cancel_action_resolves_correctly(self):
@@ -140,5 +139,4 @@ class TestResolveConfirmation:
         result = await resolve_confirmation(update, prefix=_PREFIX)
 
         assert result is not None
-        _owner_id, _message, _subject, action = result
-        assert action == ConfirmAction.CANCEL
+        assert result.action == ConfirmAction.CANCEL
