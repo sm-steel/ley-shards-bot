@@ -3,6 +3,7 @@ import pytest
 from ley_shards_bot.models import BannerType, CurrencyType, Player
 from ley_shards_bot.services.currency import get_balance
 from ley_shards_bot.services.gacha import PULL_COST_LEY_SHARDS, InsufficientLeyShardsError
+from ley_shards_bot.services.players import PlayerRef
 from ley_shards_bot.services.tickets import buy_tickets
 
 
@@ -11,7 +12,7 @@ class TestBuyTickets:
         session.add(Player(telegram_user_id=1, ley_shards=1000))
         session.commit()
 
-        new_balance = buy_tickets(session, 1, BannerType.STANDARD, 3)
+        new_balance = buy_tickets(session, PlayerRef(1), BannerType.STANDARD, 3)
 
         assert new_balance == 3
         assert get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 3
@@ -22,7 +23,7 @@ class TestBuyTickets:
         session.add(Player(telegram_user_id=1, ley_shards=1000))
         session.commit()
 
-        buy_tickets(session, 1, BannerType.EVENT, 2)
+        buy_tickets(session, PlayerRef(1), BannerType.EVENT, 2)
 
         assert get_balance(session, 1, CurrencyType.EVENT_TICKET) == 2
         assert get_balance(session, 1, CurrencyType.STANDARD_TICKET) == 0
@@ -32,7 +33,7 @@ class TestBuyTickets:
         session.commit()
 
         with pytest.raises(InsufficientLeyShardsError) as exc_info:
-            buy_tickets(session, 1, BannerType.STANDARD, 1)
+            buy_tickets(session, PlayerRef(1), BannerType.STANDARD, 1)
 
         assert exc_info.value.required == PULL_COST_LEY_SHARDS
         assert exc_info.value.available == 100
@@ -45,13 +46,13 @@ class TestBuyTickets:
         session.commit()
 
         with pytest.raises(ValueError, match="positive"):
-            buy_tickets(session, 1, BannerType.STANDARD, 0)
+            buy_tickets(session, PlayerRef(1), BannerType.STANDARD, 0)
 
     def test_captures_username_on_purchase(self, session):
         session.add(Player(telegram_user_id=42, ley_shards=PULL_COST_LEY_SHARDS))
         session.commit()
 
-        new_balance = buy_tickets(session, 42, BannerType.STANDARD, 1, username="newbie")
+        new_balance = buy_tickets(session, PlayerRef(42, username="newbie"), BannerType.STANDARD, 1)
 
         assert new_balance == 1
         player = session.get(Player, 42)
@@ -62,7 +63,7 @@ class TestBuyTickets:
         assert session.get(Player, 99) is None
 
         with pytest.raises(InsufficientLeyShardsError):
-            buy_tickets(session, 99, BannerType.STANDARD, 1, username="freshface")
+            buy_tickets(session, PlayerRef(99, username="freshface"), BannerType.STANDARD, 1)
 
         player = session.get(Player, 99)
         assert player is not None

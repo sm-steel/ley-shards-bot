@@ -25,6 +25,7 @@ from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_privat
 from ley_shards_bot.commands.helpers.targeting import resolve_target
 from ley_shards_bot.db import session_scope
 from ley_shards_bot.services import economy
+from ley_shards_bot.services.players import PlayerRef
 from ley_shards_bot.time_utils import game_day, utc_now
 
 if TYPE_CHECKING:
@@ -43,7 +44,9 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     with session_scope() as session:
-        result = economy.claim_daily(session, user.id, now=utc_now(), username=user.username)
+        result = economy.claim_daily(
+            session, PlayerRef(user.id, username=user.username), now=utc_now()
+        )
 
     if result.granted:
         text = f"+{result.amount} Ley Shards \U0001f48e (balance: {result.new_balance})"
@@ -65,7 +68,9 @@ async def trickle_message_handler(update: Update, context: ContextTypes.DEFAULT_
     logger.trace("Trickle check for {}", user.id)
 
     with session_scope() as session:
-        economy.apply_trickle(session, user.id, today=game_day(utc_now()), username=user.username)
+        economy.apply_trickle(
+            session, PlayerRef(user.id, username=user.username), today=game_day(utc_now())
+        )
 
 
 async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -95,7 +100,7 @@ async def award_guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         target_id, capture_username, _remaining_args = resolved
 
         result = economy.award_guess(
-            session, target_id, today=game_day(utc_now()), username=capture_username
+            session, PlayerRef(target_id, username=capture_username), today=game_day(utc_now())
         )
 
     if result.granted:
@@ -158,7 +163,9 @@ async def _execute_amount_command(
         amount = int(amount_args[0])
 
         try:
-            new_balance = spec.apply(session, target_id, amount, username=capture_username)
+            new_balance = spec.apply(
+                session, PlayerRef(target_id, username=capture_username), amount
+            )
         except ValueError as exc:
             logger.debug("{} rejected: {}", spec.command, exc)
             await message.reply_text(str(exc))

@@ -257,7 +257,7 @@ def _grant_character(
         return False, constellation_level, 0
 
     echoes = ECHOES_PER_DUPLICATE[character.rarity]
-    player = get_or_create_player(session, player_id)
+    player = get_or_create_player(session, PlayerRef(player_id))
     player.echoes += echoes
     return False, None, echoes
 
@@ -331,7 +331,7 @@ def pull_single(
     rng = rng or random.Random()
     now = utc_now()
 
-    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
+    account = get_or_create_player(session, player)
     plan = _plan_pull_cost(session, player.telegram_user_id, banner, 1)
     if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
@@ -385,7 +385,7 @@ def pull_ten(
     rng = rng or random.Random()
     now = utc_now()
 
-    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
+    account = get_or_create_player(session, player)
     plan = _plan_pull_cost(session, player.telegram_user_id, banner, TEN_PULL_SIZE)
     if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(

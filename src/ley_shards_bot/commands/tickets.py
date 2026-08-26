@@ -16,6 +16,7 @@ from ley_shards_bot.db import session_scope
 from ley_shards_bot.models import BannerType
 from ley_shards_bot.services import tickets
 from ley_shards_bot.services.gacha import InsufficientLeyShardsError
+from ley_shards_bot.services.players import PlayerRef
 
 _USAGE = "Usage: /buy_ticket <standard|event> <count>"
 
@@ -54,7 +55,7 @@ async def buy_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     with session_scope() as session:
         try:
             new_balance = tickets.buy_tickets(
-                session, user.id, ticket_type, count, username=user.username
+                session, PlayerRef(user.id, username=user.username), ticket_type, count
             )
         except InsufficientLeyShardsError as exc:
             await message.reply_text(

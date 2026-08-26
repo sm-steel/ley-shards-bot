@@ -15,7 +15,7 @@ from loguru import logger
 from ley_shards_bot.models import BannerType, CurrencyType
 from ley_shards_bot.services import currency
 from ley_shards_bot.services.gacha import PULL_COST_LEY_SHARDS, InsufficientLeyShardsError
-from ley_shards_bot.services.players import get_or_create_player
+from ley_shards_bot.services.players import PlayerRef, get_or_create_player
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -26,14 +26,7 @@ _TICKET_TYPE_BY_BANNER: dict[BannerType, CurrencyType] = {
 }
 
 
-def buy_tickets(
-    session: Session,
-    telegram_user_id: int,
-    ticket_type: BannerType,
-    count: int,
-    *,
-    username: str | None = None,
-) -> int:
+def buy_tickets(session: Session, player: PlayerRef, ticket_type: BannerType, count: int) -> int:
     """/buy_ticket: pre-buy `count` tickets of `ticket_type` at
     PULL_COST_LEY_SHARDS each. Returns the new balance of that ticket
     type."""
@@ -42,19 +35,19 @@ def buy_tickets(
         raise ValueError(msg)
 
     cost = PULL_COST_LEY_SHARDS * count
-    player = get_or_create_player(session, telegram_user_id, username=username)
-    if player.ley_shards < cost:
-        raise InsufficientLeyShardsError(cost, player.ley_shards)
+    account = get_or_create_player(session, player)
+    if account.ley_shards < cost:
+        raise InsufficientLeyShardsError(cost, account.ley_shards)
 
-    player.ley_shards -= cost
+    account.ley_shards -= cost
     ticket_currency = _TICKET_TYPE_BY_BANNER[ticket_type]
-    new_balance = currency.add(session, telegram_user_id, ticket_currency, count)
+    new_balance = currency.add(session, player.telegram_user_id, ticket_currency, count)
     session.commit()
     logger.info(
         "Bought {} {} ticket(s) for {} (balance={})",
         count,
         ticket_type,
-        telegram_user_id,
+        player.telegram_user_id,
         new_balance,
     )
     return new_balance
