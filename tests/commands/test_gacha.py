@@ -141,11 +141,11 @@ def _make_callback_update(*, clicking_user_id: int, data: str) -> MagicMock:
     query = MagicMock()
     query.data = data
     query.answer = AsyncMock()
-    query.edit_message_text = AsyncMock()
     # spec=Message so isinstance(query.message, Message) — the real guard
-    # pull_confirmation_callback uses to reject an InaccessibleMessage —
-    # actually passes for these "normal" tests.
+    # commands.helpers.confirmation.resolve_confirmation uses to reject an
+    # InaccessibleMessage — actually passes for these "normal" tests.
     query.message = MagicMock(spec=Message)
+    query.message.edit_text = AsyncMock()
     query.message.reply_photo = AsyncMock()
     query.message.reply_text = AsyncMock()
     update.callback_query = query
@@ -164,7 +164,6 @@ def _make_callback_update_with_inaccessible_message(
     query = MagicMock()
     query.data = data
     query.answer = AsyncMock()
-    query.edit_message_text = AsyncMock()
     query.message = MagicMock()  # no spec=Message -> isinstance check fails
     update.callback_query = query
     return update
@@ -448,7 +447,7 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        update.callback_query.edit_message_text.assert_awaited_once()
+        update.callback_query.message.edit_text.assert_awaited_once()
         update.callback_query.message.reply_photo.assert_awaited_once()
 
     async def test_owner_cancels(self, engine):
@@ -458,8 +457,8 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        update.callback_query.edit_message_text.assert_awaited_once()
-        (text,), _ = update.callback_query.edit_message_text.call_args
+        update.callback_query.message.edit_text.assert_awaited_once()
+        (text,), _ = update.callback_query.message.edit_text.call_args
         assert "cancel" in text.lower()
         update.callback_query.message.reply_photo.assert_not_called()
 
@@ -470,7 +469,7 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        update.callback_query.edit_message_text.assert_not_called()
+        update.callback_query.message.edit_text.assert_not_called()
         _args, kwargs = update.callback_query.answer.call_args
         assert kwargs.get("show_alert") is True
 
@@ -480,7 +479,7 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        update.callback_query.edit_message_text.assert_not_called()
+        update.callback_query.message.edit_text.assert_not_called()
 
     async def test_confirm_with_now_insufficient_ley_shards(self, engine):
         # seed a player with 0 ley_shards and no tickets
@@ -492,7 +491,7 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        (text,), _ = update.callback_query.edit_message_text.call_args
+        (text,), _ = update.callback_query.message.edit_text.call_args
         assert "Not enough Ley Shards" in text
 
     async def test_expired_message_replies_with_a_safe_fallback(self, engine):
@@ -509,7 +508,7 @@ class TestPullConfirmationCallback:
 
         await gacha_commands.pull_confirmation_callback(update, context)
 
-        update.callback_query.edit_message_text.assert_not_called()
+        update.callback_query.message.edit_text.assert_not_called()
         update.callback_query.answer.assert_awaited_once()
         _args, kwargs = update.callback_query.answer.call_args
         assert kwargs.get("show_alert") is True

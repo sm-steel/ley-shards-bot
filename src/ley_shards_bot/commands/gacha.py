@@ -16,9 +16,9 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, overload
 
 from loguru import logger
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
-from telegram.ext import ContextTypes
+from telegram import Update
 
+from ley_shards_bot.commands.helpers import confirmation
 from ley_shards_bot.commands.helpers.formatting import RARITY_STARS
 from ley_shards_bot.commands.helpers.scoping import NOT_IN_DM_MESSAGE, in_private_chat
 from ley_shards_bot.db import session_scope
@@ -28,29 +28,22 @@ from ley_shards_bot.services.players import PlayerRef
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
-    from telegram import CallbackQuery, User
+    from telegram import Message, User
+    from telegram.ext import ContextTypes
 
 _CALLBACK_PREFIX = "pull"
 
 
 class _PullType(StrEnum):
-    """The two pull shapes a confirm/cancel prompt can be for — encoded
-    into the callback_data string (see `_callback_data`/
-    `_parse_callback_data`) and dispatched on throughout this module.
-    A `StrEnum`, not a bare string, so a typo anywhere it's compared or
+    """The two pull shapes a confirm/cancel prompt can be for — the
+    `subject` this module hands to `commands.helpers.confirmation`'s
+    callback_data encoding, and dispatched on throughout this module. A
+    `StrEnum`, not a bare string, so a typo anywhere it's compared or
     constructed is a `ValueError`/type-checker error, not a silent drift
     between "the set of valid types" and "what actually runs"."""
 
     SINGLE = "single"
     TEN = "ten"
-
-
-class _ConfirmAction(StrEnum):
-    """The two actions a confirm/cancel button click can carry, encoded
-    the same way as `_PullType` above."""
-
-    CONFIRM = "confirm"
-    CANCEL = "cancel"
 
 
 # 10-pull sends a text summary of everything, plus a photo card for these
@@ -129,37 +122,6 @@ async def _announce_rare_pull(
         )
 
 
-def _callback_data(owner_id: int, pull_type: _PullType, action: _ConfirmAction) -> str:
-    return f"{_CALLBACK_PREFIX}:{owner_id}:{pull_type}:{action}"
-
-
-def _parse_callback_data(data: str) -> tuple[int, _PullType, _ConfirmAction] | None:
-    parts = data.split(":")
-    if len(parts) != 4 or parts[0] != _CALLBACK_PREFIX:
-        return None
-    try:
-        return int(parts[1]), _PullType(parts[2]), _ConfirmAction(parts[3])
-    except ValueError:
-        return None
-
-
-def _build_confirmation_keyboard(owner_id: int, pull_type: _PullType) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "Confirm",
-                    callback_data=_callback_data(owner_id, pull_type, _ConfirmAction.CONFIRM),
-                ),
-                InlineKeyboardButton(
-                    "Cancel",
-                    callback_data=_callback_data(owner_id, pull_type, _ConfirmAction.CANCEL),
-                ),
-            ]
-        ]
-    )
-
-
 def _pull_failure_reply(
     exc: gacha.InsufficientLeyShardsError | gacha.EmptyRarityPoolError,
 ) -> str:
@@ -211,7 +173,9 @@ async def _attempt_pull(
         await message.reply_text(
             f"This {noun} needs {exc.ley_shards_required} Ley Shards \U0001f48e directly "
             f"({exc.tickets_to_spend} ticket(s) will also be used). Confirm?",
-            reply_markup=_build_confirmation_keyboard(player.telegram_user_id, pull_type),
+            reply_markup=confirmation.build_keyboard(
+                _CALLBACK_PREFIX, player.telegram_user_id, pull_type
+            ),
         )
         return None
     except (gacha.InsufficientLeyShardsError, gacha.EmptyRarityPoolError) as exc:
@@ -277,7 +241,6 @@ class _ConfirmedPullContext:
     parameter-count qlty checks (see CLAUDE.md's qlty guidance —
     genuinely restructuring, not loosening the check)."""
 
-    query: CallbackQuery
     context: ContextTypes.DEFAULT_TYPE
     clicking_user: User
     message: Message
@@ -290,10 +253,10 @@ async def _confirm_single_pull(ctx: _ConfirmedPullContext) -> None:
         try:
             outcome = gacha.pull_single(session, ctx.player, banner, confirmed_direct_spend=True)
         except (gacha.InsufficientLeyShardsError, gacha.EmptyRarityPoolError) as exc:
-            await ctx.query.edit_message_text(_pull_failure_reply(exc))
+            await ctx.message.edit_text(_pull_failure_reply(exc))
             return
 
-    await ctx.query.edit_message_text("Confirmed ✅")
+    await ctx.message.edit_text("Confirmed ✅")
     await ctx.message.reply_photo(
         photo=outcome.character.image_url, caption=_format_single_caption(outcome)
     )
@@ -306,10 +269,10 @@ async def _confirm_ten_pull(ctx: _ConfirmedPullContext) -> None:
         try:
             outcomes = gacha.pull_ten(session, ctx.player, banner, confirmed_direct_spend=True)
         except (gacha.InsufficientLeyShardsError, gacha.EmptyRarityPoolError) as exc:
-            await ctx.query.edit_message_text(_pull_failure_reply(exc))
+            await ctx.message.edit_text(_pull_failure_reply(exc))
             return
 
-    await ctx.query.edit_message_text("Confirmed ✅")
+    await ctx.message.edit_text("Confirmed ✅")
     summary = "\n".join(_format_outcome_line(outcome) for outcome in outcomes)
     await ctx.message.reply_text(f"10-Pull results:\n{summary}")
     for outcome in outcomes:
@@ -322,11 +285,13 @@ async def _confirm_ten_pull(ctx: _ConfirmedPullContext) -> None:
 
 async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles a tap on the Confirm/Cancel keyboard `_attempt_pull` shows
-    when a pull would draw on Ley Shards directly. Follows
-    `collection.py`'s callback pattern exactly: prefix + owner_id +
-    fields in the callback_data, `query.answer()` before the owner check
-    (with `show_alert=True` and no edit for a non-owner click) and after
-    it, and a silent `query.answer()` + no edit for malformed data.
+    when a pull would draw on Ley Shards directly. All the generic
+    callback plumbing — owner check, malformed-data/expired-message
+    handling, following `collection.py`'s callback pattern — lives in
+    `commands.helpers.confirmation.resolve_confirmation`, shared with
+    any other confirm/cancel flow the bot grows later; this function
+    only handles what's actually gacha-specific: turning the resolved
+    `subject` back into a `_PullType` and running the pull.
 
     Confirm re-runs the pull with `confirmed_direct_spend=True` — the
     cost is recomputed fresh from the player's *current* balances, never
@@ -335,44 +300,29 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
     to a short ack (Telegram can't edit a text message into a photo
     message), and the real result is sent as a follow-up (see
     `_confirm_single_pull`/`_confirm_ten_pull`)."""
-    query = update.callback_query
+    resolved = await confirmation.resolve_confirmation(update, prefix=_CALLBACK_PREFIX)
+    if resolved is None:
+        return
+    owner_id, message, subject, action = resolved
+
+    try:
+        pull_type = _PullType(subject)
+    except ValueError:
+        # Can't happen from a button this module itself built, but the
+        # subject is an opaque string as far as resolve_confirmation is
+        # concerned — validate it back out defensively rather than trust
+        # it.
+        logger.warning("pull confirmation carried an unknown pull_type {!r}", subject)
+        return
+
+    if action == confirmation.ConfirmAction.CANCEL:
+        await message.edit_text("Cancelled — no Ley Shards spent.")
+        return
+
     clicking_user = update.effective_user
-    if query is None or clicking_user is None or query.data is None:
+    if clicking_user is None:
         return
-    if not isinstance(query.message, Message):
-        # query.message is typed as MaybeInaccessibleMessage (Message |
-        # InaccessibleMessage) — PTB's stand-in for a message that's
-        # since been deleted or otherwise gone inaccessible (its own
-        # docstring: "messages that are e.g. deleted"), not something
-        # specific to Business API connections. Realistically narrow
-        # here (the confirm/cancel prompt is normally clicked within
-        # seconds), but not impossible — the prompt could be deleted, or
-        # the bot restarted, between being sent and confirmed — and an
-        # InaccessibleMessage has no reply_photo/reply_text to call
-        # below, so bail out safely rather than risking an
-        # AttributeError.
-        await query.answer("This confirmation has expired.", show_alert=True)
-        return
-    message = query.message
-
-    parsed = _parse_callback_data(query.data)
-    if parsed is None:
-        await query.answer()
-        return
-    owner_id, pull_type, action = parsed
-
-    if clicking_user.id != owner_id:
-        logger.warning("{} tried to confirm {}'s pull", clicking_user.id, owner_id)
-        await query.answer("This isn't your pull to confirm.", show_alert=True)
-        return
-    await query.answer()
-
-    if action == _ConfirmAction.CANCEL:
-        await query.edit_message_text("Cancelled — no Ley Shards spent.")
-        return
-
     ctx = _ConfirmedPullContext(
-        query=query,
         context=context,
         clicking_user=clicking_user,
         message=message,
