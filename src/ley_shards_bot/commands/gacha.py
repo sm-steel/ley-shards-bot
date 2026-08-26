@@ -12,6 +12,7 @@ result — see `_announce_rare_pull`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, overload
 
 from loguru import logger
@@ -30,12 +31,27 @@ if TYPE_CHECKING:
     from telegram import CallbackQuery, User
 
 _CALLBACK_PREFIX = "pull"
-# The only two valid pull_type tokens in a pull: callback_data string —
-# checked here (parsing) and dispatched on by literal comparison in
-# _attempt_pull/pull_confirmation_callback, so a typo in either place
-# shows up as a real ConfirmationRequiredError/mismatch, not a silent
-# drift between "the set of valid types" and "what actually runs".
-_PULL_TYPES = frozenset({"single", "ten"})
+
+
+class _PullType(StrEnum):
+    """The two pull shapes a confirm/cancel prompt can be for — encoded
+    into the callback_data string (see `_callback_data`/
+    `_parse_callback_data`) and dispatched on throughout this module.
+    A `StrEnum`, not a bare string, so a typo anywhere it's compared or
+    constructed is a `ValueError`/type-checker error, not a silent drift
+    between "the set of valid types" and "what actually runs"."""
+
+    SINGLE = "single"
+    TEN = "ten"
+
+
+class _ConfirmAction(StrEnum):
+    """The two actions a confirm/cancel button click can carry, encoded
+    the same way as `_PullType` above."""
+
+    CONFIRM = "confirm"
+    CANCEL = "cancel"
+
 
 # 10-pull sends a text summary of everything, plus a photo card for these
 # rarities only — every character in a highlight-only feed would be spam.
@@ -113,31 +129,31 @@ async def _announce_rare_pull(
         )
 
 
-def _callback_data(owner_id: int, pull_type: str, action: str) -> str:
+def _callback_data(owner_id: int, pull_type: _PullType, action: _ConfirmAction) -> str:
     return f"{_CALLBACK_PREFIX}:{owner_id}:{pull_type}:{action}"
 
 
-def _parse_callback_data(data: str) -> tuple[int, str, str] | None:
+def _parse_callback_data(data: str) -> tuple[int, _PullType, _ConfirmAction] | None:
     parts = data.split(":")
     if len(parts) != 4 or parts[0] != _CALLBACK_PREFIX:
         return None
-    if parts[2] not in _PULL_TYPES or parts[3] not in {"confirm", "cancel"}:
-        return None
     try:
-        return int(parts[1]), parts[2], parts[3]
+        return int(parts[1]), _PullType(parts[2]), _ConfirmAction(parts[3])
     except ValueError:
         return None
 
 
-def _build_confirmation_keyboard(owner_id: int, pull_type: str) -> InlineKeyboardMarkup:
+def _build_confirmation_keyboard(owner_id: int, pull_type: _PullType) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "Confirm", callback_data=_callback_data(owner_id, pull_type, "confirm")
+                    "Confirm",
+                    callback_data=_callback_data(owner_id, pull_type, _ConfirmAction.CONFIRM),
                 ),
                 InlineKeyboardButton(
-                    "Cancel", callback_data=_callback_data(owner_id, pull_type, "cancel")
+                    "Cancel",
+                    callback_data=_callback_data(owner_id, pull_type, _ConfirmAction.CANCEL),
                 ),
             ]
         ]
@@ -157,13 +173,13 @@ def _pull_failure_reply(
 
 @overload
 async def _attempt_pull(
-    session: Session, message: Message, player: PlayerRef, pull_type: Literal["single"]
+    session: Session, message: Message, player: PlayerRef, pull_type: Literal[_PullType.SINGLE]
 ) -> gacha.PullOutcome | None: ...
 
 
 @overload
 async def _attempt_pull(
-    session: Session, message: Message, player: PlayerRef, pull_type: Literal["ten"]
+    session: Session, message: Message, player: PlayerRef, pull_type: Literal[_PullType.TEN]
 ) -> list[gacha.PullOutcome] | None: ...
 
 
@@ -171,7 +187,7 @@ async def _attempt_pull(
     session: Session,
     message: Message,
     player: PlayerRef,
-    pull_type: str,
+    pull_type: _PullType,
 ) -> gacha.PullOutcome | list[gacha.PullOutcome] | None:
     """Shared `/pull`/`/pull10` flow: resolve the standard banner, attempt
     the pull (`gacha.pull_single`/`gacha.pull_ten`, dispatched on
@@ -187,11 +203,11 @@ async def _attempt_pull(
     two — the caller can't distinguish and doesn't need to."""
     banner = gacha.get_or_create_standard_banner(session)
     try:
-        if pull_type == "single":
+        if pull_type == _PullType.SINGLE:
             return gacha.pull_single(session, player, banner)
         return gacha.pull_ten(session, player, banner)
     except gacha.ConfirmationRequiredError as exc:
-        noun = "pull" if pull_type == "single" else "10-pull"
+        noun = "pull" if pull_type == _PullType.SINGLE else "10-pull"
         await message.reply_text(
             f"This {noun} needs {exc.ley_shards_required} Ley Shards \U0001f48e directly "
             f"({exc.tickets_to_spend} ticket(s) will also be used). Confirm?",
@@ -216,7 +232,7 @@ async def pull_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     player = PlayerRef(user.id, username=user.username)
     with session_scope() as session:
-        outcome = await _attempt_pull(session, message, player, "single")
+        outcome = await _attempt_pull(session, message, player, _PullType.SINGLE)
         if outcome is None:
             return
 
@@ -239,7 +255,7 @@ async def pull_ten_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     player = PlayerRef(user.id, username=user.username)
     with session_scope() as session:
-        outcomes = await _attempt_pull(session, message, player, "ten")
+        outcomes = await _attempt_pull(session, message, player, _PullType.TEN)
         if outcomes is None:
             return
 
@@ -351,7 +367,7 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
         return
     await query.answer()
 
-    if action == "cancel":
+    if action == _ConfirmAction.CANCEL:
         await query.edit_message_text("Cancelled — no Ley Shards spent.")
         return
 
@@ -362,7 +378,7 @@ async def pull_confirmation_callback(update: Update, context: ContextTypes.DEFAU
         message=message,
         player=PlayerRef(owner_id),
     )
-    if pull_type == "single":
+    if pull_type == _PullType.SINGLE:
         await _confirm_single_pull(ctx)
     else:
         await _confirm_ten_pull(ctx)
