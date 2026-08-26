@@ -150,6 +150,7 @@ erDiagram
     PLAYERS ||--o{ PLAYER_CHARACTERS : owns
     PLAYERS ||--o{ PLAYER_WEAPONS : owns
     PLAYERS ||--o| TELEGRAM_LINKS : links
+    PLAYERS ||--o{ PLAYER_CURRENCIES : holds
     CHARACTERS ||--o{ PLAYER_CHARACTERS : "owned as"
     WEAPONS ||--o{ PLAYER_WEAPONS : "owned as"
     BANNERS ||--o{ BANNER_RUNS : "activated as"
@@ -166,11 +167,12 @@ erDiagram
 
 | Table | Status | Purpose |
 |---|---|---|
-| `players` | Implemented; grows columns | Telegram user id, `username` (opportunistically captured), Ley Shards balance, Echoes balance, `last_daily_claimed_at`, `last_trickle_date`. Phase 1.1 adds `standard_tickets`/`event_tickets`, `timezone` (nullable, self-reported — see #43), and `registered_at` (nullable — set once `/start` completes; distinct from row existence, since admin-targeted rows can exist unregistered, see "Registration gate" above); Phase 1.2 adds `weapon_tickets` — see `MECHANICS.md`'s Currencies table. |
+| `players` | Implemented; grows columns | Telegram user id, `username` (opportunistically captured), Ley Shards balance, Echoes balance, `last_daily_claimed_at`, `last_trickle_date`. Phase 1.1 adds `timezone` (nullable, self-reported — see #43) and `registered_at` (nullable — set once `/start` completes; distinct from row existence, since admin-targeted rows can exist unregistered, see "Registration gate" above). Ley Shards/Echoes stay plain columns here, not part of `player_currencies` below (# TODO: unifying them is a reasonable future cleanup, not done yet). |
 | `characters` | Implemented; grows columns | Name, series, image URL, `description` (Phase 1.1), tags (Phase 1.1, simple JSON/text), rarity (3★/4★/5★, admin-editable from Phase 1.2), `role`/`element` (Phase 1.2, enums), placeholder base stats (HP/ATK/DEF/SPD, admin-editable from Phase 1.2) — see `MECHANICS.md`'s Characters section. |
 | `weapons` | Planned (Phase 1.2) | Mirrors `characters`' shape but admin-authored, not AniList-sourced: name, image URL, rarity, `weapon_type` enum, placeholder base stats. |
 | `player_characters` | Implemented; reinterpreted | Ownership: `(player_id, character_id, copies_owned)`. `copies_owned` is now **constellation progress** (0–6, capped at 7 total copies), not a raw duplicate count — see `GACHA.md`'s "Duplicates" section for the pull-time logic and `MECHANICS.md` for what constellations are. |
 | `player_weapons` | Planned (Phase 1.2) | Ownership, mirrors `player_characters`: `copies_owned` is **refinement progress** (1–5, first copy already refinement 1). |
+| `player_currencies` | Implemented (Phase 1.1) | `(player_id, currency_type, amount)` — a generic balance ledger. Phase 1.1 uses it for `standard_tickets`/`event_tickets`; Phase 1.2's weapon ticket needs only a new `CurrencyType` member, no migration. See `services/currency.py`/`services/tickets.py` and `GACHA.md`'s "Banner tickets" section. |
 | `banners` | Implemented; restructured (Phase 1.1) | The reusable **definition**: `type` (standard/event/weapon), name, rate-up character/weapon pick(s), `paired_banner_id` (self-referential, nullable — links an event character banner definition to its paired event weapon banner definition, Phase 1.2). Never deleted when a banner ends. |
 | `banner_runs` | Planned (Phase 1.1) | One row per **activation**: `banner_id` FK, `starts_at`, `ends_at` (nullable while live). Rerunning a banner is a new row against the same `banners.id` — zero re-curation. The standard banner gets one permanent run. |
 | `banner_characters` | Planned (Phase 1.1) | `(banner_id, character_id, is_featured)` — a banner's character pool. `is_featured` marks the two rate-up 4★ and two rate-up 3★ on an event banner (meaningless — always false — on the standard banner). Replaces today's implicit "standard banner = every character in the DB." |

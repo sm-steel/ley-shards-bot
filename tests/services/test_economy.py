@@ -20,6 +20,7 @@ from ley_shards_bot.services.economy import (
     grant,
     revoke,
 )
+from ley_shards_bot.services.players import PlayerRef
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ class TestClaimDaily:
     def test_first_claim_grants_the_full_amount(self, session):
         now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
-        result = claim_daily(session, 1, now=now)
+        result = claim_daily(session, PlayerRef(1), now=now)
 
         assert result.granted is True
         assert result.amount == DAILY_AMOUNT
@@ -46,10 +47,10 @@ class TestClaimDaily:
 
     def test_second_claim_same_game_day_is_rejected(self, session):
         first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-        claim_daily(session, 1, now=first)
+        claim_daily(session, PlayerRef(1), now=first)
 
         second = first + timedelta(hours=1)
-        result = claim_daily(session, 1, now=second)
+        result = claim_daily(session, PlayerRef(1), now=second)
 
         assert result.granted is False
         assert result.amount == 0
@@ -59,10 +60,10 @@ class TestClaimDaily:
         # 2h45m apart — nowhere near a rolling 24h cooldown — but the
         # 02:00 UTC boundary between them makes it a new game day.
         first = datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
-        claim_daily(session, 1, now=first)
+        claim_daily(session, PlayerRef(1), now=first)
 
         second = datetime(2026, 1, 2, 2, 15, tzinfo=UTC)
-        result = claim_daily(session, 1, now=second)
+        result = claim_daily(session, PlayerRef(1), now=second)
 
         assert result.granted is True
         assert result.new_balance == DAILY_AMOUNT * 2
@@ -71,62 +72,66 @@ class TestClaimDaily:
         # Almost 24h apart, but both moments fall before the *next*
         # 02:00 UTC boundary — still the same game day.
         first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-        claim_daily(session, 1, now=first)
+        claim_daily(session, PlayerRef(1), now=first)
 
         second = datetime(2026, 1, 2, 1, 59, tzinfo=UTC)
-        result = claim_daily(session, 1, now=second)
+        result = claim_daily(session, PlayerRef(1), now=second)
 
         assert result.granted is False
         assert result.new_balance == DAILY_AMOUNT  # unchanged
 
     def test_rejected_claim_reports_next_claim_time(self, session):
         first = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-        claim_daily(session, 1, now=first)
+        claim_daily(session, PlayerRef(1), now=first)
 
-        result = claim_daily(session, 1, now=first + timedelta(hours=1))
+        result = claim_daily(session, PlayerRef(1), now=first + timedelta(hours=1))
 
         # The next 02:00 UTC boundary after the rejected attempt — stored/
         # returned as naive UTC by convention, see time_utils.py.
         assert result.next_claim_at == datetime(2026, 1, 2, 2, 0)  # noqa: DTZ001
 
     def test_captures_username(self, session):
-        claim_daily(session, 1, now=datetime(2026, 1, 1, 12, 0, tzinfo=UTC), username="aleksey")
+        claim_daily(
+            session,
+            PlayerRef(1, username="aleksey"),
+            now=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        )
 
         assert session.get(Player, 1).username == "aleksey"
 
 
 class TestApplyTrickle:
     def test_first_message_of_the_day_grants_trickle(self, session):
-        applied = apply_trickle(session, 1, today=date(2026, 1, 1))
+        applied = apply_trickle(session, PlayerRef(1), today=date(2026, 1, 1))
 
         assert applied is True
         assert session.get(Player, 1).ley_shards == TRICKLE_AMOUNT
 
     def test_second_message_same_day_grants_nothing(self, session):
-        apply_trickle(session, 1, today=date(2026, 1, 1))
+        apply_trickle(session, PlayerRef(1), today=date(2026, 1, 1))
 
-        applied_again = apply_trickle(session, 1, today=date(2026, 1, 1))
+        applied_again = apply_trickle(session, PlayerRef(1), today=date(2026, 1, 1))
 
         assert applied_again is False
         assert session.get(Player, 1).ley_shards == TRICKLE_AMOUNT
 
     def test_next_day_grants_again(self, session):
-        apply_trickle(session, 1, today=date(2026, 1, 1))
+        apply_trickle(session, PlayerRef(1), today=date(2026, 1, 1))
 
-        applied = apply_trickle(session, 1, today=date(2026, 1, 2))
+        applied = apply_trickle(session, PlayerRef(1), today=date(2026, 1, 2))
 
         assert applied is True
         assert session.get(Player, 1).ley_shards == TRICKLE_AMOUNT * 2
 
     def test_captures_username(self, session):
-        apply_trickle(session, 1, today=date(2026, 1, 1), username="aleksey")
+        apply_trickle(session, PlayerRef(1, username="aleksey"), today=date(2026, 1, 1))
 
         assert session.get(Player, 1).username == "aleksey"
 
 
 class TestAwardGuess:
     def test_grants_bonus_to_target(self, session):
-        result = award_guess(session, 5, today=date(2026, 1, 1))
+        result = award_guess(session, PlayerRef(5), today=date(2026, 1, 1))
 
         assert result.granted is True
         assert result.amount == AWARD_GUESS_AMOUNT
@@ -135,9 +140,9 @@ class TestAwardGuess:
     def test_stops_after_daily_limit(self, session):
         today = date(2026, 1, 1)
         for _ in range(AWARD_GUESS_DAILY_LIMIT):
-            award_guess(session, 5, today=today)
+            award_guess(session, PlayerRef(5), today=today)
 
-        result = award_guess(session, 5, today=today)
+        result = award_guess(session, PlayerRef(5), today=today)
 
         assert result.granted is False
         assert result.awards_remaining_today == 0
@@ -146,63 +151,63 @@ class TestAwardGuess:
     def test_limit_resets_the_next_day(self, session):
         today = date(2026, 1, 1)
         for _ in range(AWARD_GUESS_DAILY_LIMIT):
-            award_guess(session, 5, today=today)
+            award_guess(session, PlayerRef(5), today=today)
 
-        result = award_guess(session, 5, today=date(2026, 1, 2))
+        result = award_guess(session, PlayerRef(5), today=date(2026, 1, 2))
 
         assert result.granted is True
 
     def test_captures_target_username(self, session):
-        award_guess(session, 5, today=date(2026, 1, 1), username="aleksey")
+        award_guess(session, PlayerRef(5, username="aleksey"), today=date(2026, 1, 1))
 
         assert session.get(Player, 5).username == "aleksey"
 
 
 class TestGrant:
     def test_adds_arbitrary_amount_to_target_balance(self, session):
-        new_balance = grant(session, 9, 250)
+        new_balance = grant(session, PlayerRef(9), 250)
 
         assert new_balance == 250
         assert session.get(Player, 9).ley_shards == 250
 
     def test_stacks_across_calls(self, session):
-        grant(session, 9, 100)
-        new_balance = grant(session, 9, 50)
+        grant(session, PlayerRef(9), 100)
+        new_balance = grant(session, PlayerRef(9), 50)
 
         assert new_balance == 150
 
     def test_rejects_non_positive_amount(self, session):
         with pytest.raises(ValueError, match="positive"):
-            grant(session, 9, 0)
+            grant(session, PlayerRef(9), 0)
 
     def test_captures_target_username(self, session):
-        grant(session, 9, 100, username="aleksey")
+        grant(session, PlayerRef(9, username="aleksey"), 100)
 
         assert session.get(Player, 9).username == "aleksey"
 
 
 class TestRevoke:
     def test_deducts_arbitrary_amount_from_target_balance(self, session):
-        grant(session, 9, 250)
+        grant(session, PlayerRef(9), 250)
 
-        new_balance = revoke(session, 9, 100)
+        new_balance = revoke(session, PlayerRef(9), 100)
 
         assert new_balance == 150
         assert session.get(Player, 9).ley_shards == 150
 
     def test_clamps_at_zero_rather_than_going_negative(self, session):
-        grant(session, 9, 50)
+        grant(session, PlayerRef(9), 50)
 
-        new_balance = revoke(session, 9, 100)
+        new_balance = revoke(session, PlayerRef(9), 100)
 
         assert new_balance == 0
         assert session.get(Player, 9).ley_shards == 0
 
     def test_rejects_non_positive_amount(self, session):
         with pytest.raises(ValueError, match="positive"):
-            revoke(session, 9, 0)
+            revoke(session, PlayerRef(9), 0)
 
     def test_captures_target_username(self, session):
-        revoke(session, 9, 100, username="aleksey")
+        revoke(session, PlayerRef(9, username="aleksey"), 100)
 
         assert session.get(Player, 9).username == "aleksey"

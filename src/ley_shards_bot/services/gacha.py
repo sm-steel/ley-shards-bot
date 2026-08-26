@@ -26,11 +26,13 @@ from ley_shards_bot.models import (
     Banner,
     BannerType,
     Character,
+    CurrencyType,
     PityState,
     PlayerCharacter,
     Pull,
     Rarity,
 )
+from ley_shards_bot.services import currency
 from ley_shards_bot.services.players import PlayerRef, get_or_create_player
 from ley_shards_bot.time_utils import utc_now
 
@@ -79,6 +81,21 @@ class InsufficientLeyShardsError(Exception):
         self.required = required
         self.available = available
         super().__init__(f"Need {required} Ley Shards, have {available}.")
+
+
+class ConfirmationRequiredError(Exception):
+    """Raised before any RNG/state mutation when a pull would draw on
+    Ley Shards directly — no matching standard ticket for a single pull,
+    or a ticket shortfall for a 10-pull — and the caller hasn't already
+    confirmed that spend via confirmed_direct_spend=True.
+    tickets_to_spend is how many standard tickets will ALSO be spent
+    alongside the confirmed Ley Shards amount (0 for a single pull with
+    zero tickets; nonzero for a partially-ticket-covered 10-pull)."""
+
+    def __init__(self, ley_shards_required: int, tickets_to_spend: int) -> None:
+        self.ley_shards_required = ley_shards_required
+        self.tickets_to_spend = tickets_to_spend
+        super().__init__(f"Confirm spending {ley_shards_required} Ley Shards directly.")
 
 
 class EmptyRarityPoolError(Exception):
@@ -130,27 +147,40 @@ def roll_rarity(
     return Rarity.THREE_STAR
 
 
+@dataclass(frozen=True)
+class PityCounts:
+    pulls_since_last_5star: int
+    pulls_since_last_4star: int
+
+
 def next_pity_counts(
     pulls_since_last_5star: int, pulls_since_last_4star: int, rarity: Rarity
-) -> tuple[int, int]:
+) -> PityCounts:
     """Pity counters after a pull of the given rarity. A 5-star resets
     both (it's also "4-star or better"); a 4-star resets only its own."""
     if rarity == Rarity.FIVE_STAR:
-        return 0, 0
+        return PityCounts(0, 0)
     if rarity == Rarity.FOUR_STAR:
-        return pulls_since_last_5star + 1, 0
-    return pulls_since_last_5star + 1, pulls_since_last_4star + 1
+        return PityCounts(pulls_since_last_5star + 1, 0)
+    return PityCounts(pulls_since_last_5star + 1, pulls_since_last_4star + 1)
 
 
-def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> tuple[bool, bool]:
-    """The classic 50/50: returns (is_rate_up, guaranteed_rate_up_next_time).
-    A prior loss (guaranteed_rate_up=True coming in) always wins this time
-    and clears the flag; otherwise it's a coin flip, and losing sets the
-    flag for the banner's next 5-star."""
+@dataclass(frozen=True)
+class FiftyFiftyResult:
+    is_rate_up: bool
+    guaranteed_rate_up_next: bool
+
+
+def resolve_event_five_star(guaranteed_rate_up: bool, rng: random.Random) -> FiftyFiftyResult:
+    """The classic 50/50: is this pull the rate-up character, and is the
+    banner's *next* 5-star now guaranteed to be? A prior loss
+    (guaranteed_rate_up=True coming in) always wins this time and clears
+    the flag; otherwise it's a coin flip, and losing sets the flag for
+    the banner's next 5-star."""
     if guaranteed_rate_up:
-        return True, False
+        return FiftyFiftyResult(is_rate_up=True, guaranteed_rate_up_next=False)
     won = rng.random() < 0.5
-    return won, not won
+    return FiftyFiftyResult(is_rate_up=won, guaranteed_rate_up_next=not won)
 
 
 def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
@@ -164,6 +194,37 @@ def pick_character(pool: Sequence[Character], rng: random.Random) -> Character:
 # ---------------------------------------------------------------------------
 # DB-touching orchestration
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _PullCostPlan:
+    tickets_to_spend: int
+    ley_shards_required: int
+
+
+def _plan_pull_cost(
+    session: Session, player_id: int, banner: Banner, pull_count: int
+) -> _PullCostPlan:
+    """Ticket-then-Ley-Shards cost split for `pull_count` pulls on the
+    given banner. TODO(#32): only ever checks STANDARD_TICKET, and only
+    when banner.type is STANDARD — /pull and /pull10 always operate on
+    the standard banner until banner selection lands, but a non-standard
+    banner must never draw on the standard ticket balance (ticket types
+    are not interchangeable — see GACHA.md). Once #32 adds an
+    event-banner getter, extend this (or add a parallel
+    _plan_event_pull_cost) to check EVENT_TICKET the same way for event
+    banners."""
+    available_tickets = (
+        currency.get_balance(session, player_id, CurrencyType.STANDARD_TICKET)
+        if banner.type == BannerType.STANDARD
+        else 0
+    )
+    tickets_to_spend = min(available_tickets, pull_count)
+    pulls_via_ley_shards = pull_count - tickets_to_spend
+    return _PullCostPlan(
+        tickets_to_spend=tickets_to_spend,
+        ley_shards_required=pulls_via_ley_shards * PULL_COST_LEY_SHARDS,
+    )
 
 
 def get_or_create_standard_banner(session: Session) -> Banner:
@@ -189,29 +250,36 @@ def _characters_of_rarity(session: Session, rarity: Rarity) -> list[Character]:
     return list(session.scalars(select(Character).where(Character.rarity == rarity)))
 
 
-def _grant_character(
-    session: Session, player_id: int, character: Character
-) -> tuple[bool, int | None, int]:
+@dataclass(frozen=True)
+class GrantResult:
+    is_new: bool
+    # The level just reached (1-6) on a duplicate-into-level-up grant;
+    # None on a first-copy grant or on an Echoes-conversion grant. At
+    # most one of constellation_level/echoes_gained is set, and neither
+    # is set when is_new is True.
+    constellation_level: int | None
+    echoes_gained: int
+
+
+def _grant_character(session: Session, player_id: int, character: Character) -> GrantResult:
     """Add a copy to the player's collection: a brand-new character, a
     constellation level-up (2nd through 7th copy), or — once already at
     the CONSTELLATION_MAX_COPIES cap — a duplicate converted to Echoes
-    instead. Returns (is_new, constellation_level, echoes_gained); at
-    most one of constellation_level/echoes_gained is set, and neither is
-    set when is_new is True."""
+    instead."""
     ownership = session.get(PlayerCharacter, (player_id, character.anilist_id))
     if ownership is None:
         session.add(PlayerCharacter(player_id=player_id, character_id=character.anilist_id))
-        return True, None, 0
+        return GrantResult(is_new=True, constellation_level=None, echoes_gained=0)
 
     if ownership.copies_owned < CONSTELLATION_MAX_COPIES:
         ownership.copies_owned += 1
         constellation_level = ownership.copies_owned - 1
-        return False, constellation_level, 0
+        return GrantResult(is_new=False, constellation_level=constellation_level, echoes_gained=0)
 
     echoes = ECHOES_PER_DUPLICATE[character.rarity]
-    player = get_or_create_player(session, player_id)
+    player = get_or_create_player(session, PlayerRef(player_id))
     player.echoes += echoes
-    return False, None, echoes
+    return GrantResult(is_new=False, constellation_level=None, echoes_gained=echoes)
 
 
 def _execute_single_pull(
@@ -227,9 +295,9 @@ def _execute_single_pull(
         pity.pulls_since_last_4star,
     )
     rarity = roll_rarity(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rng)
-    pity.pulls_since_last_5star, pity.pulls_since_last_4star = next_pity_counts(
-        pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity
-    )
+    next_counts = next_pity_counts(pity.pulls_since_last_5star, pity.pulls_since_last_4star, rarity)
+    pity.pulls_since_last_5star = next_counts.pulls_since_last_5star
+    pity.pulls_since_last_4star = next_counts.pulls_since_last_4star
 
     is_event_five_star = (
         banner.type == BannerType.EVENT
@@ -239,7 +307,9 @@ def _execute_single_pull(
     is_rate_up: bool | None = None
     character: Character | None = None
     if is_event_five_star:
-        is_rate_up, pity.guaranteed_rate_up = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        fifty_fifty = resolve_event_five_star(pity.guaranteed_rate_up, rng)
+        is_rate_up = fifty_fifty.is_rate_up
+        pity.guaranteed_rate_up = fifty_fifty.guaranteed_rate_up_next
         logger.debug(
             "Event 50/50 for player={}: is_rate_up={} guaranteed_next={}",
             player_id,
@@ -252,7 +322,7 @@ def _execute_single_pull(
     if character is None:
         character = pick_character(_characters_of_rarity(session, rarity), rng)
 
-    is_new, constellation_level, echoes_gained = _grant_character(session, player_id, character)
+    grant_result = _grant_character(session, player_id, character)
     session.add(
         Pull(
             player_id=player_id,
@@ -265,34 +335,48 @@ def _execute_single_pull(
     return PullOutcome(
         character=character,
         rarity=rarity,
-        is_new=is_new,
-        echoes_gained=echoes_gained,
-        constellation_level=constellation_level,
+        is_new=grant_result.is_new,
+        echoes_gained=grant_result.echoes_gained,
+        constellation_level=grant_result.constellation_level,
         is_rate_up=is_rate_up,
     )
 
 
 def pull_single(
-    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
+    session: Session,
+    player: PlayerRef,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    confirmed_direct_spend: bool = False,
 ) -> PullOutcome:
     rng = rng or random.Random()
     now = utc_now()
 
-    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    if account.ley_shards < PULL_COST_LEY_SHARDS:
+    account = get_or_create_player(session, player)
+    plan = _plan_pull_cost(session, player.telegram_user_id, banner, 1)
+    if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "Pull rejected for {}: need {} Ley Shards, have {}",
             player.telegram_user_id,
-            PULL_COST_LEY_SHARDS,
+            plan.ley_shards_required,
             account.ley_shards,
         )
-        raise InsufficientLeyShardsError(PULL_COST_LEY_SHARDS, account.ley_shards)
-    account.ley_shards -= PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(plan.ley_shards_required, account.ley_shards)
+    if plan.ley_shards_required > 0 and not confirmed_direct_spend:
+        raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
 
     outcome = _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
+
+    if plan.tickets_to_spend > 0:
+        currency.spend(
+            session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
+        )
+    account.ley_shards -= plan.ley_shards_required
     session.commit()
     logger.info(
-        "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={})",
+        "Pull: player={} banner={} -> {} {} (new={}, constellation={}, echoes={}, rate_up={}, "
+        "tickets_spent={}, ley_shards_spent={})",
         player.telegram_user_id,
         banner.type,
         outcome.rarity,
@@ -301,12 +385,19 @@ def pull_single(
         outcome.constellation_level,
         outcome.echoes_gained,
         outcome.is_rate_up,
+        plan.tickets_to_spend,
+        plan.ley_shards_required,
     )
     return outcome
 
 
 def pull_ten(
-    session: Session, player: PlayerRef, banner: Banner, *, rng: random.Random | None = None
+    session: Session,
+    player: PlayerRef,
+    banner: Banner,
+    *,
+    rng: random.Random | None = None,
+    confirmed_direct_spend: bool = False,
 ) -> list[PullOutcome]:
     """Ten pulls charged as one batch. No separate "at least one 4-star+"
     logic is needed here: the continuous pulls_since_last_4star pity
@@ -316,27 +407,37 @@ def pull_ten(
     rng = rng or random.Random()
     now = utc_now()
 
-    account = get_or_create_player(session, player.telegram_user_id, username=player.username)
-    if account.ley_shards < TEN_PULL_COST_LEY_SHARDS:
+    account = get_or_create_player(session, player)
+    plan = _plan_pull_cost(session, player.telegram_user_id, banner, TEN_PULL_SIZE)
+    if plan.ley_shards_required > 0 and account.ley_shards < plan.ley_shards_required:
         logger.warning(
             "10-pull rejected for {}: need {} Ley Shards, have {}",
             player.telegram_user_id,
-            TEN_PULL_COST_LEY_SHARDS,
+            plan.ley_shards_required,
             account.ley_shards,
         )
-        raise InsufficientLeyShardsError(TEN_PULL_COST_LEY_SHARDS, account.ley_shards)
-    account.ley_shards -= TEN_PULL_COST_LEY_SHARDS
+        raise InsufficientLeyShardsError(plan.ley_shards_required, account.ley_shards)
+    if plan.ley_shards_required > 0 and not confirmed_direct_spend:
+        raise ConfirmationRequiredError(plan.ley_shards_required, plan.tickets_to_spend)
 
     outcomes = [
         _execute_single_pull(session, player.telegram_user_id, banner, rng, now)
         for _ in range(TEN_PULL_SIZE)
     ]
+
+    if plan.tickets_to_spend > 0:
+        currency.spend(
+            session, player.telegram_user_id, CurrencyType.STANDARD_TICKET, plan.tickets_to_spend
+        )
+    account.ley_shards -= plan.ley_shards_required
     session.commit()
     rarity_counts = Counter(outcome.rarity for outcome in outcomes)
     logger.info(
-        "10-pull: player={} banner={} -> {}",
+        "10-pull: player={} banner={} -> {} (tickets_spent={}, ley_shards_spent={})",
         player.telegram_user_id,
         banner.type,
         dict(rarity_counts),
+        plan.tickets_to_spend,
+        plan.ley_shards_required,
     )
     return outcomes

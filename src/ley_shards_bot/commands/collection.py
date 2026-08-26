@@ -12,6 +12,8 @@ showing — someone else's collection.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -28,16 +30,22 @@ from ley_shards_bot.services.pagination import PAGE_SIZE, Page, paginate
 _CALLBACK_PREFIX = "coll"
 
 
+@dataclass(frozen=True)
+class CollectionPageRef:
+    owner_id: int
+    page_number: int
+
+
 def _callback_data(owner_id: int, page_number: int) -> str:
     return f"{_CALLBACK_PREFIX}:{owner_id}:{page_number}"
 
 
-def _parse_callback_data(data: str) -> tuple[int, int] | None:
+def _parse_callback_data(data: str) -> CollectionPageRef | None:
     parts = data.split(":")
     if len(parts) != 3 or parts[0] != _CALLBACK_PREFIX:
         return None
     try:
-        return int(parts[1]), int(parts[2])
+        return CollectionPageRef(int(parts[1]), int(parts[2]))
     except ValueError:
         return None
 
@@ -113,18 +121,19 @@ async def collection_page_callback(update: Update, context: ContextTypes.DEFAULT
     if parsed is None:
         await query.answer()
         return
-    owner_id, requested_page = parsed
 
-    if clicking_user.id != owner_id:
-        logger.warning("{} tried to page through {}'s collection", clicking_user.id, owner_id)
+    if clicking_user.id != parsed.owner_id:
+        logger.warning(
+            "{} tried to page through {}'s collection", clicking_user.id, parsed.owner_id
+        )
         await query.answer("This isn't your collection.", show_alert=True)
         return
     await query.answer()
 
     with session_scope() as session:
-        owned = get_owned_characters(session, owner_id)
+        owned = get_owned_characters(session, parsed.owner_id)
 
-    page = paginate(owned, requested_page, PAGE_SIZE)
+    page = paginate(owned, parsed.page_number, PAGE_SIZE)
     await query.edit_message_text(
-        _format_page_text(page, len(owned)), reply_markup=_build_keyboard(page, owner_id)
+        _format_page_text(page, len(owned)), reply_markup=_build_keyboard(page, parsed.owner_id)
     )
