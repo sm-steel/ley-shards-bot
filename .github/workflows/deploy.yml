@@ -38,13 +38,49 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
-      # Loads MOSCOW_SSH_KEY into an ssh-agent for the ssh step below.
+      # Loads MOSCOW_SSH_KEY into an ssh-agent for the ssh steps below.
       # This is a dedicated deploy-only key, not the personal key used
       # to administer moscow interactively — see CLAUDE.md.
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.MOSCOW_SSH_KEY }}
+
+      # Same version/checksum pin as priv-vps-infrastructure's own
+      # workflows — bump by hand, checksum from the release's own
+      # checksums file, not computed from whatever got downloaded.
+      - name: Install sops
+        env:
+          SOPS_VERSION: v3.13.3
+          SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
+        run: |
+          curl -fsSL -o /tmp/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          echo "${SOPS_SHA256}  /tmp/sops" | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+
+      # #73: .env lives only on moscow's disk today, never in this repo or
+      # any store. Decrypts here (where SOPS_AGE_KEY lives) and ships the
+      # plaintext straight to moscow over the same SSH connection — never
+      # written to this runner's own disk. Deploy runs compose on the host
+      # itself (see the next step), not in this job, so a plain `sops -d >
+      # .env` here would just leave a file nothing ever reads.
+      #
+      # umask 077 secures the file the instant it's created; writing to a
+      # temp name and mv-ing into place keeps the live path from ever
+      # holding a partial write if the connection hiccups mid-stream.
+      - name: Render and ship .env to moscow
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          MOSCOW_HOST: ${{ secrets.MOSCOW_HOST }}
+          MOSCOW_USER: ${{ secrets.MOSCOW_USER }}
+        run: |
+          sops decrypt --extract '["env"]' secrets/app.sops.yaml | \
+            ssh -o StrictHostKeyChecking=accept-new "$MOSCOW_USER@$MOSCOW_HOST" '
+              set -e
+              umask 077
+              cat > /opt/ley-shards-bot/.env.new
+              mv /opt/ley-shards-bot/.env.new /opt/ley-shards-bot/.env
+            '
 
       - name: Deploy to moscow
         env:
