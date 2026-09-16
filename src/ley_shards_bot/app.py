@@ -19,6 +19,7 @@ from telegram.ext import (
     filters,
 )
 
+from ley_shards_bot import heartbeat
 from ley_shards_bot.commands.collection import collection_command, collection_page_callback
 from ley_shards_bot.commands.economy import (
     award_guess_command,
@@ -103,6 +104,7 @@ def main() -> None:
     setup_logging(config.log_level)
     logger.info("Starting ley-shards-bot (log level={})", config.log_level)
     application = build_application(config)
+    heartbeat.install(application)
     application.run_polling()
     logger.info("Bot stopped")
 
