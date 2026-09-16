@@ -24,9 +24,7 @@ services:
         condition: service_healthy
     # heartbeat.py touches /tmp/ley-shards-bot-heartbeat after every real,
     # successful getUpdates cycle -- a stale file means polling is wedged
-    # even though the process itself is still running. Same pattern as
-    # nani-pix-bot's own compose file (see priv-vps-infrastructure#86) --
-    # this is the reference copy the Ansible role's template is built from.
+    # even though the process itself is still running.
     healthcheck:
       test:
         [
@@ -37,10 +35,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    # Fleet-wide autoheal (tmknight/docker-autoheal, see the ops vault's
-    # инфраструктура/Autoheal.md) restarts any container Docker itself
-    # marks unhealthy -- but only containers carrying these labels, since
-    # monitoring is opt-in fleet-wide.
+    # Optional: if you run github.com/tmknight/docker-autoheal (or a
+    # similar watcher) it restarts any container Docker marks unhealthy,
+    # but only containers carrying these labels. Harmless/ignored if you
+    # don't run one.
     labels:
       autoheal.monitor.enable: "true"
       autoheal.restart.enable: "true"

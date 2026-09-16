@@ -14,16 +14,16 @@ this doc covers the system design.
 
 ```
                                   ┌───────────────────────────────────────────┐
-                                  │                moscow VPS                  │
+                                  │               your VPS                     │
                                   │  ┌──────────┐ ┌─────────┐ ┌─────────────┐ │
-Telegram  ◄── proxy ──────────────┼──┤   bot    │─┤ mariadb │ │  keycloak   │ │
- servers      (helsinki)          │  │(container)│ │(container)│(container, │ │
-                                  │  └──────────┘ └─────────┘ │ pre-existing)│ │
+Telegram  ◄── proxy (optional) ───┼──┤   bot    │─┤ mariadb │ │  keycloak   │ │
+ servers                          │  │(container)│ │(container)│(container, │ │
+                                  │  └──────────┘ └─────────┘ │  Phase 1.1)  │ │
                                   │        │                   └─────────────┘ │
                                   │        │ shares services/+models/          │
                                   │  ┌─────▼────┐                              │
-      admin panel ◄── Traefik ────┼──┤   api    │  (Phase 1.1, FastAPI,       │
-      (browser, OIDC login)      │  │(container)│   serves admin/'s static    │
+      admin panel ◄── reverse ────┼──┤   api    │  (Phase 1.1, FastAPI,       │
+      (browser, OIDC login)  proxy │  │(container)│   serves admin/'s static  │
                                   │  └──────────┘   build too)                 │
                                   │   docker compose network                   │
                                   └───────────────────────────────────────────┘
@@ -31,38 +31,38 @@ Telegram  ◄── proxy ──────────────┼──┤
 
 ## Infrastructure
 
-- **Host:** internal alias `moscow` (see the ops vault for the actual
-  hostname/credentials) — chosen for its RAM headroom, since a
+- **Host:** your own VPS — chosen for its RAM headroom, since a
   containerized MariaDB needs more than a small 1GB box comfortably offers.
 - **Docker Compose stack:**
   - `bot` — built from the repo `Dockerfile` (uv-based Python image).
   - `mariadb` — official `mariadb:11` image, data in a named volume. Not
     installed on the host — deliberately containerized like everything else
-    deployed to these VPSes.
+    deployed to your host.
   - `api` (Phase 1.1) — the *same* image as `bot`, run via a
     docker-compose `command:` override (`uvicorn ley_shards_bot.api:app`)
     rather than a second `Dockerfile` — see "Admin Panel" below.
-- **Telegram connectivity:** `moscow` has no direct route to
-  `api.telegram.org`. The bot routes *all* Telegram API traffic — both
-  `getUpdates` long-polling and outgoing `send*` calls — through another
-  internal host's (`helsinki`) tinyproxy
+- **Telegram connectivity:** some hosts have no direct route to
+  `api.telegram.org` (network/firewall restrictions vary by provider). If
+  yours doesn't, route *all* Telegram API traffic — both `getUpdates`
+  long-polling and outgoing `send*` calls — through an HTTP proxy
   (`http://<user>:<pass>@<proxy-host>:<proxy-port>`), configured on
-  `ApplicationBuilder`'s `proxy` and `get_updates_proxy`. Real
-  hostname/port/credentials are documented in the ops vault, not here.
-- **Traefik** (already running on `moscow`, `v3.7`) is the reverse proxy
-  for every web-facing service there — ports 80/443, Let's Encrypt via
-  the `letsencrypt` cert resolver, Docker-label-based routing, services
-  join an external `proxy` network. The `api` service (Phase 1.1) joins
-  that same pattern: `traefik.enable=true`,
+  `ApplicationBuilder`'s `proxy` and `get_updates_proxy` via
+  `TELEGRAM_PROXY_URL` (see `.env.example`).
+- **Reverse proxy (optional):** if you're exposing the admin panel
+  (Phase 1.1) publicly, put a reverse proxy in front of the `api`
+  service — e.g. Traefik with Docker-label-based routing and Let's
+  Encrypt via a cert resolver (`traefik.enable=true`,
   `traefik.http.routers.<name>.rule=Host(\`<subdomain>.<domain>\`)`,
-  `.tls.certresolver=letsencrypt` — no new reverse-proxy infra needed,
-  just labels plus a DNS record. Exact subdomain TBD when that ticket is
-  picked up.
-- **Keycloak** (already running on `moscow`, `26.7.1`, its own Postgres)
-  is what the admin panel authenticates against (Phase 1.1) — not a new
-  password system. A realm role (e.g. `gacha-admin`) gates panel access;
-  authorization is entirely Keycloak-side, so adding more admins later is
-  a Keycloak-console action, not a code change.
+  `.tls.certresolver=letsencrypt`). If you're already running a reverse
+  proxy for other services, the `api` service just joins that same
+  pattern; otherwise any standard reverse-proxy setup works. Exact
+  subdomain TBD when that ticket is picked up.
+- **Keycloak** is what the admin panel authenticates against (Phase
+  1.1) — not a new password system. A realm role (e.g. `gacha-admin`)
+  gates panel access; authorization is entirely Keycloak-side, so adding
+  more admins later is a Keycloak-console action, not a code change.
+  You'll need to run your own Keycloak instance (or point at an existing
+  OIDC provider) and configure the realm/role.
 
 ## Component boundaries
 
@@ -241,8 +241,8 @@ external data source for them, so they only ever go through the panel.
   authorization (that's the Keycloak role) — linking is purely about
   connecting identities, used for attribution and any Telegram-aware
   panel feature later.
-- **Traefik + DNS**, same pattern as Keycloak's existing routing — see
-  "Infrastructure" above.
+- **Reverse proxy + DNS**, same pattern described in "Infrastructure"
+  above.
 
 ## Commands & topics (Phase 1.1: DM-first)
 

@@ -3,10 +3,7 @@ name: Release
 # Fires after checks.yml/tests.yml would already have run on the same
 # push (both trigger on push to master too) -- semantic-release itself
 # doesn't gate on their success, so this assumes master is only ever
-# updated through a merge that already passed CI, same assumption this
-# repo's deploy step has always made (this repo's own deploy.yml,
-# before it was retired in favor of priv-vps-infrastructure's Ansible
-# role).
+# updated through a merge that already passed CI.
 on:
   push:
     branches: [master]
@@ -42,10 +39,9 @@ jobs:
           # protected branch. pyproject.toml IS still stamped with the
           # release version on disk (version_toml, Task 2) -- that change
           # is just never committed. Verified safe against this exact
-          # repo's uv.lock shape (nani-pix-bot#3's investigation): the
-          # root package is `source = { editable = "." }`, so a stamped-
-          # but-uncommitted version never breaks the Dockerfile's
-          # `uv sync --frozen` below.
+          # repo's uv.lock shape: the root package is
+          # `source = { editable = "." }`, so a stamped-but-uncommitted
+          # version never breaks the Dockerfile's `uv sync --frozen` below.
           commit: false
           push: true
           tag: true

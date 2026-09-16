@@ -1,13 +1,11 @@
 """Liveness heartbeat for the getUpdates polling loop, written to disk
 so a Docker HEALTHCHECK can detect it going stale (see
-docker-compose.yml's `bot` service and the ops vault's
-`инфраструктура/Autoheal.md`).
+docker-compose.yml's `bot` service).
 
-Ported verbatim from nani-pix-bot's own heartbeat.py (see that repo's
-git history for the original incident this was built for: a wedged
-httpx connection pool left getUpdates polling silently dead for hours
-while the process kept running and retrying). Works identically here
-even though this bot drives polling via `application.run_polling()`
+Guards against a specific failure mode: a wedged httpx connection pool
+can leave getUpdates polling silently dead for hours while the process
+keeps running and retrying, with nothing externally visible as broken.
+Works even though this bot drives polling via `application.run_polling()`
 rather than a hand-rolled loop: `install()` wraps the bot's real
 `get_updates` call itself, and `run_polling()` still calls
 `bot.get_updates()` internally under the hood — the heartbeat file is

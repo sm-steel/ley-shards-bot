@@ -3,11 +3,12 @@
 Private Telegram gacha game bot for a small friend group. Players earn
 **Ley Shards** 💎 and spend them pulling real anime characters (sourced from
 AniList) on standard/event banners, with classic gacha pity mechanics.
-Runs as a Docker Compose stack on the `moscow` VPS.
+Runs as a Docker Compose stack on a self-hosted VPS.
 
 **Read `ARCHITECTURE.md` before making non-trivial changes** — it covers the
-system design, data model, and infra topology (why Telegram traffic is
-proxied through `helsinki`, etc.). `GACHA.md` covers pull mechanics
+system design, data model, and infra topology (e.g. why Telegram traffic
+may need to be routed through a proxy, depending on your host). `GACHA.md`
+covers pull mechanics
 (costs, pity, banners) and `MECHANICS.md` covers the game entities
 (characters, weapons) and economy — read whichever is relevant before
 touching gacha/economy code. This file is about where things live and how
@@ -147,12 +148,10 @@ fork PR can run arbitrary code on one, including reading secrets):
 - **`tests.yml`** (badge in `README.md`) — `uv run pytest -q`. No service
   containers: every test fixture uses an in-memory SQLite engine.
 
-Deployment is no longer a workflow in this repo — this repo's old
-`deploy.yml` (which SSHed into `moscow` with a dedicated
-`MOSCOW_SSH_KEY` deploy key and ran `docker compose up -d --build`
-directly) has been retired now that `priv-vps-infrastructure`'s own
-Ansible role deploys the released image to `moscow`. See that repo for
-the real deploy mechanism.
+Deployment is not automated by a workflow in this repo — deploying your
+own instance (building/pulling the image and running `docker compose up
+-d`) is up to you. See `README.md`'s Deployment section for a
+step-by-step guide.
 
 If a local pre-commit pass ever disagrees with `checks.yml`'s result on
 the same commit, that's a bug in the CI setup (a version/config drift
@@ -237,8 +236,8 @@ source of truth for what's done/in progress/planned.
 > comment, PR description, PR comment, or commit message.** This includes
 > the owned VPS infrastructure this bot deploys to. Use the same
 > placeholders as the rest of this repo (`USERNAME`, `PASSWORD`,
-> `PROXY_HOST`, `PROXY_PORT`, `<user>`, `<pass>`, or an alias like `moscow`/
-> `helsinki` with no FQDN) and point at "the ops vault" for real values —
+> `PROXY_HOST`, `PROXY_PORT`, `<user>`, `<pass>`, or a host alias with no
+> FQDN) and point at your own private ops notes for real values —
 > never write them out, even "temporarily" or "just to explain the bug."
 > Everything in this repo — commits, issues, PRs, history — is public and
 > indexed by anyone/anything crawling GitHub; there is no private fallback
@@ -247,8 +246,9 @@ source of truth for what's done/in progress/planned.
 ## Commit messages: Conventional Commits
 
 This repo uses [Conventional Commits](https://www.conventionalcommits.org/)
-— required once semantic-release is wired in (tracked in
-priv-vps-infrastructure's M9), harmless before that.
+— required by `python-semantic-release`
+(`.github/workflows/release.yml`), which uses the commit type to decide
+the version bump.
 
 Format: `<type>(<optional scope>): <description>`
 
