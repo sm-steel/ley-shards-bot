@@ -133,10 +133,10 @@ what it would have caught before the next real commit, don't make a
 habit of it.
 
 **CI (`.github/workflows/`) runs the exact same checks as the local
-pre-commit hook — never a separate copy of them.** Three workflows,
-GitHub-hosted runners only (never self-hosted — GitHub explicitly warns
-against self-hosted runners on public repos, since any fork PR can run
-arbitrary code on one, including reading secrets):
+pre-commit hook — never a separate copy of them.** These two verification
+workflows run on GitHub-hosted runners only (never self-hosted — GitHub
+explicitly warns against self-hosted runners on public repos, since any
+fork PR can run arbitrary code on one, including reading secrets):
 - **`checks.yml`** (badge in `README.md`) — installs `uv`+`qlty`, then
   `uv run pre-commit run --all-files` against the committed
   `.pre-commit-config.yaml` — literally the same hooks the local git
@@ -146,18 +146,13 @@ arbitrary code on one, including reading secrets):
   no `pip` in it — `pre-commit` is already a `uv` dev dependency here.
 - **`tests.yml`** (badge in `README.md`) — `uv run pytest -q`. No service
   containers: every test fixture uses an in-memory SQLite engine.
-- **`deploy.yml`** — only on a push to `master` (never `pull_request`, so
-  a fork PR can never reach its secrets). Re-runs both of the above as a
-  `verify` job, then a `deploy` job SSHs into `moscow` (via
-  `webfactory/ssh-agent` + a dedicated `MOSCOW_SSH_KEY` deploy key —
-  **not** the personal key used to administer `moscow` interactively) and
-  runs `git pull --ff-only && docker compose up -d --build &&
-  docker compose exec -T bot uv run alembic upgrade head` — the same
-  commands run by hand before this existed. Merging to `master` is what
-  ships a change now; there's no separate manual deploy step. Secrets
-  (`MOSCOW_SSH_KEY`/`MOSCOW_HOST`/`MOSCOW_USER`) live in the repo's
-  GitHub Settings, never in a committed file — see the vault's
-  infrastructure docs for what "moscow" actually is.
+
+Deployment is no longer a workflow in this repo — this repo's old
+`deploy.yml` (which SSHed into `moscow` with a dedicated
+`MOSCOW_SSH_KEY` deploy key and ran `docker compose up -d --build`
+directly) has been retired now that `priv-vps-infrastructure`'s own
+Ansible role deploys the released image to `moscow`. See that repo for
+the real deploy mechanism.
 
 If a local pre-commit pass ever disagrees with `checks.yml`'s result on
 the same commit, that's a bug in the CI setup (a version/config drift

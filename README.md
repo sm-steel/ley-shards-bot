@@ -33,14 +33,11 @@ uv run ty check          # type check
 
 ## Deployment
 
-Runs entirely in Docker (bot + MariaDB), via `docker-compose.yml`. On the
-target host (moscow):
-
-```sh
-cp .env.example .env     # fill in real secrets — see comments in the file
-docker compose up -d --build
-docker compose logs -f bot
-```
+Runs entirely in Docker (bot + MariaDB), via `docker-compose.yml`, on the
+`moscow` VPS. Deployment itself — pulling the released image and
+restarting the stack — is owned by `priv-vps-infrastructure`'s Ansible
+role, not run by hand in this repo; see that repo for the actual deploy
+mechanism.
 
 The `mariadb` service owns its data in a named volume (`mariadb_data`); the
 bot connects to it over the compose network as `mariadb:3306`, not
@@ -51,8 +48,6 @@ bot connects to it over the compose network as `mariadb:3306`, not
 Two GitHub Actions workflows run on every push/PR — **Checks**
 (`.github/workflows/checks.yml`: `ruff`, `ty`, and `qlty smells`, via the
 same `.pre-commit-config.yaml` the local pre-commit hook uses) and
-**Tests** (`.github/workflows/tests.yml`: `pytest`). A third workflow,
-**Deploy** (`.github/workflows/deploy.yml`), runs only on a push to
-`master`: it re-verifies both of the above, then SSHs into `moscow` and
-rebuilds/restarts the bot stack — merging to `master` is what ships a
-change, no manual deploy step. See `CLAUDE.md` for details.
+**Tests** (`.github/workflows/tests.yml`: `pytest`). Deployment is handled
+separately by `priv-vps-infrastructure`'s Ansible role, not by a workflow
+in this repo. See `CLAUDE.md` for details.
