@@ -225,6 +225,39 @@ Tooling above) — committing re-verifies them regardless, but running
 them yourself first means the commit doesn't just fail on the first
 attempt.
 
+## Branching & workflow
+
+`develop` is the integration branch — every task branch gets PR'd there.
+`master` is the GitHub **default** branch (what visitors see, what gets
+cloned) and release-only: it only moves via a deliberate `develop` →
+`master` PR when you actually want to cut a release, and that push is
+what triggers `release.yml` (see "Verifying changes" above). Both
+branches require a PR — no direct pushes, no force pushes, no deletions.
+
+Because `master`, not `develop`, is the GitHub default, **a new PR's
+base branch defaults to `master` and does not auto-select `develop`** —
+GitHub ties "default branch" and "default PR base branch" to the same
+setting, so this can't be fixed with a repo setting alone. Always target
+`develop` explicitly: `gh pr create --base develop …`, or pick `develop`
+from the base-branch dropdown in the GitHub UI.
+
+The standard flow for any task:
+
+1. Make sure it has a GitHub issue (see "Task tracking" below).
+2. Branch from `develop` (not `master`) as `<type>/<issue#>-<slug>` —
+   `<type>` matches the Conventional Commits type (`feat/`, `fix/`,
+   `chore/`, `docs/`, …), e.g. `feat/126-version-command`.
+3. Work and commit there, then open a PR explicitly targeting `develop`
+   (see above — it won't be preselected).
+
+Releasing is its own separate step, not something that happens as a side
+effect of a task PR: open a `develop` → `master` PR and merge it when
+you're ready to cut a version. That merge leaves a commit on `master`
+that `develop` doesn't have — `sync-develop.yml` opens a follow-up
+`master` → `develop` PR automatically; merge that one too before
+starting new task branches, so they fork from a `develop` that's
+actually caught up.
+
 ## Task tracking (GitHub Issues)
 
 Implementation progress is tracked as **GitHub Issues** on this repo
