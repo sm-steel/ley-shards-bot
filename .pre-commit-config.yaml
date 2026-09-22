@@ -39,3 +39,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      # `qlty smells` never runs plugins (trufflehog included) regardless
+      # of .qlty/qlty.toml's config — it's a different subcommand entirely,
+      # scoped to complexity/duplication. This is the actual secret scan.
+      # `qlty check` already exits non-zero on real findings by default —
+      # no gate-script wrapper needed.
+      - id: qlty-check-trufflehog
+        name: qlty check --filter trufflehog (secret scan)
+        entry: qlty check --filter trufflehog --all
+        language: system
+        pass_filenames: false
+        always_run: true
