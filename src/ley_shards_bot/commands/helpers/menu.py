@@ -16,6 +16,7 @@ PLAYER_COMMANDS = [
     BotCommand("pull", "Pull once on the gacha banner"),
     BotCommand("pull10", "Pull ten times on the gacha banner"),
     BotCommand("collection", "View your character collection"),
+    BotCommand("buy_ticket", "Buy standard/event pull tickets"),
     BotCommand("help", "List available commands"),
 ]
 

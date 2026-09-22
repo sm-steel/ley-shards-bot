@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ley_shards_bot.services.players import get_or_create_player
+from ley_shards_bot.services.players import PlayerRef, get_or_create_player
 from ley_shards_bot.time_utils import game_day, next_game_day_start, to_utc_naive
 
 if TYPE_CHECKING:
@@ -34,55 +34,53 @@ class DailyClaimResult:
     next_claim_at: datetime
 
 
-def claim_daily(
-    session: Session, telegram_user_id: int, *, now: datetime, username: str | None = None
-) -> DailyClaimResult:
+def claim_daily(session: Session, player: PlayerRef, *, now: datetime) -> DailyClaimResult:
     now = to_utc_naive(now)
-    player = get_or_create_player(session, telegram_user_id, username=username)
+    account = get_or_create_player(session, player)
 
-    if player.last_daily_claimed_at is not None and game_day(
-        player.last_daily_claimed_at
+    if account.last_daily_claimed_at is not None and game_day(
+        account.last_daily_claimed_at
     ) == game_day(now):
         next_claim_at = next_game_day_start(now)
-        logger.debug("/daily rejected for {}: next claim at {}", telegram_user_id, next_claim_at)
+        logger.debug(
+            "/daily rejected for {}: next claim at {}", player.telegram_user_id, next_claim_at
+        )
         return DailyClaimResult(
             granted=False,
             amount=0,
-            new_balance=player.ley_shards,
+            new_balance=account.ley_shards,
             next_claim_at=next_claim_at,
         )
 
-    player.ley_shards += DAILY_AMOUNT
-    player.last_daily_claimed_at = now
+    account.ley_shards += DAILY_AMOUNT
+    account.last_daily_claimed_at = now
     session.commit()
     logger.info(
         "/daily granted {} Ley Shards to {} (balance={})",
         DAILY_AMOUNT,
-        telegram_user_id,
-        player.ley_shards,
+        player.telegram_user_id,
+        account.ley_shards,
     )
     return DailyClaimResult(
         granted=True,
         amount=DAILY_AMOUNT,
-        new_balance=player.ley_shards,
+        new_balance=account.ley_shards,
         next_claim_at=next_game_day_start(now),
     )
 
 
-def apply_trickle(
-    session: Session, telegram_user_id: int, *, today: date, username: str | None = None
-) -> bool:
+def apply_trickle(session: Session, player: PlayerRef, *, today: date) -> bool:
     """Grant the once-per-day activity trickle. Returns whether it was
     actually granted (False if this player already got it today)."""
-    player = get_or_create_player(session, telegram_user_id, username=username)
-    if player.last_trickle_date == today:
-        logger.debug("Trickle already granted today for {}", telegram_user_id)
+    account = get_or_create_player(session, player)
+    if account.last_trickle_date == today:
+        logger.debug("Trickle already granted today for {}", player.telegram_user_id)
         return False
 
-    player.ley_shards += TRICKLE_AMOUNT
-    player.last_trickle_date = today
+    account.ley_shards += TRICKLE_AMOUNT
+    account.last_trickle_date = today
     session.commit()
-    logger.debug("Trickle granted {} Ley Shards to {}", TRICKLE_AMOUNT, telegram_user_id)
+    logger.debug("Trickle granted {} Ley Shards to {}", TRICKLE_AMOUNT, player.telegram_user_id)
     return True
 
 
@@ -94,90 +92,72 @@ class AwardGuessResult:
     awards_remaining_today: int
 
 
-def award_guess(
-    session: Session,
-    target_telegram_user_id: int,
-    *,
-    today: date,
-    username: str | None = None,
-) -> AwardGuessResult:
+def award_guess(session: Session, target: PlayerRef, *, today: date) -> AwardGuessResult:
     """Admin/mod-granted bonus for a correct guess in the (manual, not
     bot-run) "guess the anime" topic. Rate-limited per target per day."""
-    player = get_or_create_player(session, target_telegram_user_id, username=username)
+    account = get_or_create_player(session, target)
 
-    if player.guess_awards_date != today:
-        player.guess_awards_date = today
-        player.guess_awards_today = 0
+    if account.guess_awards_date != today:
+        account.guess_awards_date = today
+        account.guess_awards_today = 0
 
-    if player.guess_awards_today >= AWARD_GUESS_DAILY_LIMIT:
+    if account.guess_awards_today >= AWARD_GUESS_DAILY_LIMIT:
         session.commit()
-        logger.warning("/award_guess denied for {}: daily limit reached", target_telegram_user_id)
+        logger.warning("/award_guess denied for {}: daily limit reached", target.telegram_user_id)
         return AwardGuessResult(
-            granted=False, amount=0, new_balance=player.ley_shards, awards_remaining_today=0
+            granted=False, amount=0, new_balance=account.ley_shards, awards_remaining_today=0
         )
 
-    player.guess_awards_today += 1
-    player.ley_shards += AWARD_GUESS_AMOUNT
+    account.guess_awards_today += 1
+    account.ley_shards += AWARD_GUESS_AMOUNT
     session.commit()
     logger.info(
         "/award_guess granted {} Ley Shards to {} ({} remaining today)",
         AWARD_GUESS_AMOUNT,
-        target_telegram_user_id,
-        AWARD_GUESS_DAILY_LIMIT - player.guess_awards_today,
+        target.telegram_user_id,
+        AWARD_GUESS_DAILY_LIMIT - account.guess_awards_today,
     )
     return AwardGuessResult(
         granted=True,
         amount=AWARD_GUESS_AMOUNT,
-        new_balance=player.ley_shards,
-        awards_remaining_today=AWARD_GUESS_DAILY_LIMIT - player.guess_awards_today,
+        new_balance=account.ley_shards,
+        awards_remaining_today=AWARD_GUESS_DAILY_LIMIT - account.guess_awards_today,
     )
 
 
-def grant(
-    session: Session,
-    target_telegram_user_id: int,
-    amount: int,
-    *,
-    username: str | None = None,
-) -> int:
+def grant(session: Session, target: PlayerRef, amount: int) -> int:
     """Admin-only arbitrary grant, e.g. for one-off events. Returns the new
     balance."""
     if amount <= 0:
         msg = "Grant amount must be positive"
         raise ValueError(msg)
 
-    player = get_or_create_player(session, target_telegram_user_id, username=username)
-    player.ley_shards += amount
+    account = get_or_create_player(session, target)
+    account.ley_shards += amount
     session.commit()
     logger.info(
         "/grant gave {} Ley Shards to {} (balance={})",
         amount,
-        target_telegram_user_id,
-        player.ley_shards,
+        target.telegram_user_id,
+        account.ley_shards,
     )
-    return player.ley_shards
+    return account.ley_shards
 
 
-def revoke(
-    session: Session,
-    target_telegram_user_id: int,
-    amount: int,
-    *,
-    username: str | None = None,
-) -> int:
+def revoke(session: Session, target: PlayerRef, amount: int) -> int:
     """Admin-only balance correction, e.g. undoing a mistaken /grant. Clamps
     at 0 rather than allowing a negative balance. Returns the new balance."""
     if amount <= 0:
         msg = "Revoke amount must be positive"
         raise ValueError(msg)
 
-    player = get_or_create_player(session, target_telegram_user_id, username=username)
-    player.ley_shards = max(0, player.ley_shards - amount)
+    account = get_or_create_player(session, target)
+    account.ley_shards = max(0, account.ley_shards - amount)
     session.commit()
     logger.info(
         "/revoke took {} Ley Shards from {} (balance={})",
         amount,
-        target_telegram_user_id,
-        player.ley_shards,
+        target.telegram_user_id,
+        account.ley_shards,
     )
-    return player.ley_shards
+    return account.ley_shards

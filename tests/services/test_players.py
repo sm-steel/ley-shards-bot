@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from ley_shards_bot.models import Base, Player
-from ley_shards_bot.services.players import find_player_by_username, get_or_create_player
+from ley_shards_bot.services.players import PlayerRef, find_player_by_username, get_or_create_player
 
 
 @pytest.fixture
@@ -22,33 +22,33 @@ def session():
 
 class TestGetOrCreatePlayer:
     def test_new_player_has_no_username_by_default(self, session):
-        player = get_or_create_player(session, 1)
+        player = get_or_create_player(session, PlayerRef(1))
 
         assert player.username is None
 
     def test_new_player_captures_username_when_given(self, session):
-        player = get_or_create_player(session, 1, username="aleksey")
+        player = get_or_create_player(session, PlayerRef(1, username="aleksey"))
 
         assert player.username == "aleksey"
 
     def test_existing_player_refreshes_username_on_change(self, session):
-        get_or_create_player(session, 1, username="aleksey")
+        get_or_create_player(session, PlayerRef(1, username="aleksey"))
         session.commit()
 
-        player = get_or_create_player(session, 1, username="new_handle")
+        player = get_or_create_player(session, PlayerRef(1, username="new_handle"))
 
         assert player.username == "new_handle"
 
     def test_existing_player_username_untouched_when_none_given(self, session):
-        get_or_create_player(session, 1, username="aleksey")
+        get_or_create_player(session, PlayerRef(1, username="aleksey"))
         session.commit()
 
-        player = get_or_create_player(session, 1)
+        player = get_or_create_player(session, PlayerRef(1))
 
         assert player.username == "aleksey"
 
     def test_existing_player_row_persists_directly(self, session):
-        get_or_create_player(session, 1, username="aleksey")
+        get_or_create_player(session, PlayerRef(1, username="aleksey"))
         session.commit()
 
         stored = session.get(Player, 1)
@@ -58,7 +58,7 @@ class TestGetOrCreatePlayer:
 
 class TestFindPlayerByUsername:
     def test_finds_existing_player_by_exact_case(self, session):
-        get_or_create_player(session, 1, username="aleksey")
+        get_or_create_player(session, PlayerRef(1, username="aleksey"))
         session.commit()
 
         found = find_player_by_username(session, "aleksey")
@@ -67,7 +67,7 @@ class TestFindPlayerByUsername:
         assert found.telegram_user_id == 1
 
     def test_finds_existing_player_case_insensitively(self, session):
-        get_or_create_player(session, 1, username="Aleksey")
+        get_or_create_player(session, PlayerRef(1, username="Aleksey"))
         session.commit()
 
         found = find_player_by_username(session, "aleksey")

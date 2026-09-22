@@ -10,8 +10,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from ley_shards_bot.commands.helpers.targeting import resolve_target
+from ley_shards_bot.commands.helpers.targeting import ResolvedTarget, resolve_target
 from ley_shards_bot.models import Base, Player
+from ley_shards_bot.services.players import PlayerRef
 
 REPLY_HINT = "Reply to the target player's message, or use @username."
 
@@ -47,7 +48,7 @@ class TestResolveTarget:
 
         result = await resolve_target(update, session, ["@aleksey", "100"], reply_hint=REPLY_HINT)
 
-        assert result == (5, "aleksey", ["100"])
+        assert result == ResolvedTarget(PlayerRef(5, "aleksey"), ["100"])
 
     async def test_unknown_username_replies_and_returns_none(self, session):
         update = _make_update()
@@ -64,7 +65,7 @@ class TestResolveTarget:
 
         result = await resolve_target(update, session, ["100"], reply_hint=REPLY_HINT)
 
-        assert result == (7, "mira", ["100"])
+        assert result == ResolvedTarget(PlayerRef(7, "mira"), ["100"])
 
     async def test_no_username_and_no_reply_shows_the_hint(self, session):
         update = _make_update()

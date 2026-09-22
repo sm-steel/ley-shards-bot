@@ -9,13 +9,20 @@ about today's callers, not about this module — see issue #58.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ley_shards_bot.services.players import find_player_by_username
+from ley_shards_bot.services.players import PlayerRef, find_player_by_username
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from telegram import Update
+
+
+@dataclass(frozen=True)
+class ResolvedTarget:
+    player: PlayerRef
+    remaining_args: list[str]
 
 
 def _replied_to_user_id(update: Update) -> int | None:
@@ -56,14 +63,14 @@ async def resolve_target(
     args: list[str],
     *,
     reply_hint: str,
-) -> tuple[int, str | None, list[str]] | None:
+) -> ResolvedTarget | None:
     """Resolve a command's target player, trying `@username` (via the
     first arg) before falling back to reply-to-message targeting — see
-    issue #13. On success, returns `(target_id, username_to_capture,
-    remaining_args)`, where `remaining_args` has the leading `@username`
-    consumed if there was one (so callers parse e.g. an amount from it
-    instead of from `args` directly). On failure, sends a friendly reply
-    itself (unknown username, or no target at all) and returns None.
+    issue #13. On success, returns a `ResolvedTarget` whose
+    `remaining_args` has the leading `@username` consumed if there was
+    one (so callers parse e.g. an amount from it instead of from `args`
+    directly). On failure, sends a friendly reply itself (unknown
+    username, or no target at all) and returns None.
 
     Doesn't take `message` separately — every caller has already
     null-checked `update.effective_message` before calling this, so it's
@@ -80,10 +87,12 @@ async def resolve_target(
         if target_player is None:
             await message.reply_text(f"Haven't seen @{target_username} use the bot yet.")
             return None
-        return target_player.telegram_user_id, target_player.username, args[1:]
+        return ResolvedTarget(
+            PlayerRef(target_player.telegram_user_id, target_player.username), args[1:]
+        )
 
     target_id = _replied_to_user_id(update)
     if target_id is None:
         await message.reply_text(reply_hint)
         return None
-    return target_id, _replied_to_username(update), args
+    return ResolvedTarget(PlayerRef(target_id, _replied_to_username(update)), args)

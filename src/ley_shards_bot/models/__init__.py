@@ -5,10 +5,11 @@ Base.metadata always sees every table (matters for Alembic autogenerate).
 from ley_shards_bot.models.banner import Banner
 from ley_shards_bot.models.base import Base
 from ley_shards_bot.models.character import Character
-from ley_shards_bot.models.enums import BannerType, Rarity
+from ley_shards_bot.models.enums import BannerType, CurrencyType, Rarity
 from ley_shards_bot.models.pity_state import PityState
 from ley_shards_bot.models.player import Player
 from ley_shards_bot.models.player_character import PlayerCharacter
+from ley_shards_bot.models.player_currency import PlayerCurrency
 from ley_shards_bot.models.pull import Pull
 
 __all__ = [
@@ -16,9 +17,11 @@ __all__ = [
     "BannerType",
     "Base",
     "Character",
+    "CurrencyType",
     "PityState",
     "Player",
     "PlayerCharacter",
+    "PlayerCurrency",
     "Pull",
     "Rarity",
 ]

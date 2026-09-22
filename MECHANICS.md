@@ -34,8 +34,9 @@ that's deliberately not repeated here.
 | **Event ticket** (Phase 1.1) | `/buy_ticket event <count>`, 160 Ley Shards each | Event-character-banner pulls only. |
 | **Weapon ticket** (Phase 1.2) | `/buy_ticket weapon <count>`, 160 Ley Shards each | Paired event-weapon-banner pulls only. |
 
-Tickets are plain balance columns on `players` (fungible, like Ley Shards
-and Echoes), not individually-owned items — see `ARCHITECTURE.md`'s data
+Tickets are balances in the generic `player_currencies` ledger
+(fungible, like Ley Shards and Echoes, just not columns on `players`
+directly), not individually-owned items — see `ARCHITECTURE.md`'s data
 model. Full ticket-purchase/spend mechanics live in `GACHA.md`; this table
 is the currency reference, not the pull-time behavior.
 
