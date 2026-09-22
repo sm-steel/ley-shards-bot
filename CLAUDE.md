@@ -90,15 +90,18 @@ reaching for a second component library. Its Claude Code skill
 `components.json` exists there.
 
 **[qlty](https://github.com/qltysh/qlty) checks Python complexity and
-duplication** — neither is covered by `ruff`/`ty`. It's a standalone
-native binary (installed once per machine via `qlty.sh`'s install
-script, `~/.qlty/bin` — not a `uv` dependency, nothing in
-`pyproject.toml`), configured by the committed `.qlty/qlty.toml`. Only
-its own built-in complexity/duplication analysis is enabled; every
-third-party linter plugin it can also run (ruff, bandit, radarlint,
-hadolint, trufflehog, ripgrep) is explicitly disabled in that config —
+duplication, and scans for secrets** — none of that is covered by
+`ruff`/`ty`. It's a standalone native binary (installed once per machine
+via `qlty.sh`'s install script, `~/.qlty/bin` — not a `uv` dependency,
+nothing in `pyproject.toml`), configured by the committed
+`.qlty/qlty.toml`. Its own built-in complexity/duplication analysis and
+the `trufflehog` secret-scan plugin are enabled — trufflehog deliberately
+so, given this repo is public and the repo-wide "no secrets ever get
+pushed" rule (see the Security rule under "Task tracking" below); every
+*other* third-party linter plugin it can also run (ruff, bandit,
+radarlint, hadolint, ripgrep) is explicitly disabled in that config —
 `ruff`/`ty` via `uv run` stay the only linter/type-checker, this tool
-adds a capability they don't have rather than a second copy of one they
+adds capabilities they don't have rather than a second copy of ones they
 already do.
 
 ```sh
@@ -115,8 +118,9 @@ finding turns out to be a false positive on inspection (not just
 inconvenient), say so explicitly and get confirmation before touching
 the config — don't default to loosening it.
 
-**All four checks — `ruff check`, `ruff format --check`, `ty check`,
-`qlty smells` — run as a git pre-commit hook** via
+**All five checks — `ruff check`, `ruff format --check`, `ty check`,
+`qlty smells`, `qlty check --filter trufflehog` — run as a git pre-commit
+hook** via
 [pre-commit](https://pre-commit.com) (`.pre-commit-config.yaml`,
 installed as a `uv` dev dependency — `uv run pre-commit install` sets up
 the hook once per clone). A commit is blocked if any of them fail;
@@ -215,10 +219,11 @@ tests/path/to/test_thing.py` while iterating). A change isn't finished if
 any of the four fail — don't leave known ruff/ty findings for later or
 describe work as complete while they're still red.
 
-The first three (not `pytest`) plus `qlty smells` also run automatically
-as a git pre-commit hook (see Tooling above) — committing re-verifies
-them regardless, but running them yourself first means the commit
-doesn't just fail on the first attempt.
+The first three (not `pytest`) plus `qlty smells` and `qlty check
+--filter trufflehog` also run automatically as a git pre-commit hook (see
+Tooling above) — committing re-verifies them regardless, but running
+them yourself first means the commit doesn't just fail on the first
+attempt.
 
 ## Task tracking (GitHub Issues)
 

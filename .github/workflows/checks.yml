@@ -20,10 +20,11 @@ jobs:
       - name: Install project dependencies
         run: uv sync
 
-      # Just the CLI binary — no Qlty Cloud account involved. Only
-      # complexity/duplication analysis is enabled (see .qlty/qlty.toml);
-      # every third-party linter plugin it could also run is disabled,
-      # ruff/ty stay the only linter/type-checker (see CLAUDE.md).
+      # Just the CLI binary — no Qlty Cloud account involved. Complexity/
+      # duplication analysis and trufflehog secret scanning are enabled
+      # (see .qlty/qlty.toml); every other third-party linter plugin it
+      # could also run is disabled, ruff/ty stay the only linter/type-
+      # checker (see CLAUDE.md).
       - name: Install qlty
         uses: qltysh/qlty-action/install@v1
 
