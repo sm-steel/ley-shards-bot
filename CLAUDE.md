@@ -109,6 +109,17 @@ qlty smells --all --no-snippets   # complexity + duplication findings
 qlty metrics --all --sort complexity --limit 15   # per-file complexity/LOC table
 ```
 
+**Both the qlty CLI and its trufflehog plugin are version-pinned**: the
+CLI via `QLTY_VERSION` in `checks.yml`'s install step, trufflehog via
+`version = "…"` on its `[[plugin]]` entry in `.qlty/qlty.toml`. Unpinned,
+the newest qlty bundled a trufflehog whose Lob detector "verified" every
+40-character pytest name as a live secret, failing every commit with no
+code change (the same bug as nani-pix-bot#190). Run the same qlty locally
+(`qlty --version` must match `checks.yml`; `qlty upgrade --version <x>` to
+align), and bump either pin deliberately in its own change, scanning
+locally against the new version first (`qlty check --filter trufflehog
+--all`), never by bumping CI and seeing what happens.
+
 **Never resolve a qlty finding by loosening its check (raising a
 threshold, disabling a rule, excluding a path) — fix the actual code.**
 A finding is a real signal about the code, not the config; adjusting
