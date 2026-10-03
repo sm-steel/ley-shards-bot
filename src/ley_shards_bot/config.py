@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -52,3 +53,15 @@ class Config:
             database_url=database_url(),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
         )
+
+    def secret_values(self) -> list[str]:
+        """Every configured secret, by exact value — what logging_config's
+        filter masks (issue #74). Only the password half of a URL counts:
+        its user/host/database are not secret. Unset/empty values are
+        dropped, since an empty string would "match" everywhere."""
+        candidates = [
+            self.bot_token,
+            urlsplit(self.database_url).password,
+            urlsplit(self.telegram_proxy_url or "").password,
+        ]
+        return [value for value in candidates if value]

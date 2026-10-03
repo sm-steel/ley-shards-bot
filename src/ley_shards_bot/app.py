@@ -101,7 +101,7 @@ def build_application(config: Config) -> Application:
 
 def main() -> None:
     config = Config.from_env()
-    setup_logging(config.log_level)
+    setup_logging(config.log_level, config.secret_values())
     logger.info("Starting ley-shards-bot (log level={})", config.log_level)
     application = build_application(config)
     heartbeat.install(application)
